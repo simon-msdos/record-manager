@@ -165,21 +165,47 @@ app.get('/setup', async (c) => {
   const user = c.get('user')
   if (user && user.role !== 'owner') return c.text('Forbidden', 403)
   const settings = c.get('settings')
+  
+  // Cloudflare Token Template URL with Zone:Read and DNS:Edit permissions
+  const permissions = JSON.stringify([
+    { key: 'zone_read', type: 'zone' },
+    { key: 'dns_edit', type: 'zone' }
+  ])
+  const cfTokenUrl = `https://dash.cloudflare.com/profile/api-tokens?name=Record-Manager&permissionGroupKeys=${encodeURIComponent(permissions)}&accountId=*&zoneId=all`
+  
   return c.html(layout('Setup', `
     <h1>Configuration</h1>
+    <p>Follow these steps to connect your Cloudflare account and enable Google Login.</p>
+    
     <form method="POST" action="/setup">
-      <h3>1. Cloudflare API Token</h3>
-      <p class="hint">Create a token with Zone.DNS permissions.</p>
-      <label>Cloudflare API Token</label>
-      <input type="password" name="CF_API_TOKEN" value="${settings.CF_API_TOKEN || ''}" required>
+      <div style="margin-bottom: 2.5rem; border-left: 4px solid #3498db; padding-left: 1.5rem;">
+        <h3 style="margin-top:0">1. Cloudflare Connection</h3>
+        <p class="hint">We need permission to <strong>Read Zones</strong> (to list your domains) and <strong>Edit DNS</strong> (to manage records).</p>
+        
+        <div style="background: #e1f5fe; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+          <strong>Step A:</strong> 
+          <a href="${cfTokenUrl}" target="_blank" class="btn" style="margin: 0 0.5rem;">Generate Token on Cloudflare</a>
+          <span class="hint">Click "Continue to summary" and then "Create Token" on the next page.</span>
+        </div>
+        
+        <label>Step B: Paste the generated token here</label>
+        <input type="password" name="CF_API_TOKEN" value="${settings.CF_API_TOKEN || ''}" placeholder="Example: z6-..." required>
+      </div>
 
-      <h3>2. Google OAuth Credentials</h3>
-      <label>Google Client ID</label>
-      <input type="text" name="GOOGLE_CLIENT_ID" value="${settings.GOOGLE_CLIENT_ID || ''}" required>
-      <label>Google Client Secret</label>
-      <input type="password" name="GOOGLE_CLIENT_SECRET" value="${settings.GOOGLE_CLIENT_SECRET || ''}" required>
+      <div style="margin-bottom: 2.5rem; border-left: 4px solid #4285F4; padding-left: 1.5rem;">
+        <h3 style="margin-top:0">2. Google OAuth (for Login)</h3>
+        <p class="hint">Required for secure authentication. Create these in the <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
+        
+        <label>Google Client ID</label>
+        <input type="text" name="GOOGLE_CLIENT_ID" value="${settings.GOOGLE_CLIENT_ID || ''}" placeholder="...apps.googleusercontent.com" required>
+        
+        <label>Google Client Secret</label>
+        <input type="password" name="GOOGLE_CLIENT_SECRET" value="${settings.GOOGLE_CLIENT_SECRET || ''}" required>
+      </div>
 
-      <button type="submit" class="btn">Save Configuration</button>
+      <div style="background: #fff; position: sticky; bottom: 0; padding: 1rem 0; border-top: 1px solid #eee;">
+        <button type="submit" class="btn" style="width: 100%; font-size: 1.1rem; padding: 1rem;">Save & Complete Setup</button>
+      </div>
     </form>
   `, user))
 })
