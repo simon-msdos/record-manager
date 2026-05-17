@@ -174,7 +174,7 @@ app.get('/setup', async (c) => {
   const cfTokenUrl = `https://dash.cloudflare.com/profile/api-tokens?name=Record-Manager&permissionGroupKeys=${encodeURIComponent(permissions)}&accountId=*&zoneId=all`
   
   return c.html(layout('Setup', `
-    <h1>Configuration</h1>
+    <h1>Configuration v1.1</h1>
     <p>Follow these steps to connect your Cloudflare account and enable Google Login.</p>
     
     <form method="POST" action="/setup">
