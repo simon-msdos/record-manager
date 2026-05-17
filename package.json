@@ -10,6 +10,10 @@
     "hono": "^4.12.19"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.16.6",
+    "@cloudflare/workers-types": "^4.20260517.1",
+    "@hono/oauth-providers": "^0.8.5",
+    "vitest": "^4.1.6",
     "wrangler": "^4.4.0"
   }
 }
