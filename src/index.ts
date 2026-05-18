@@ -177,25 +177,24 @@ app.get('/setup', async (c) => {
     <h1>Configuration v1.1</h1>
     <p>Follow these steps to connect your Cloudflare account and enable Google Login.</p>
     
-    <form method="POST" action="/setup">
+    <form id="setup-form" method="POST" action="/setup">
       <div style="margin-bottom: 2.5rem; border-left: 4px solid #3498db; padding-left: 1.5rem;">
         <h3 style="margin-top:0">1. Cloudflare Connection</h3>
         <p class="hint">We need permission to <strong>Read Zones</strong> (to list your domains) and <strong>Edit DNS</strong> (to manage records).</p>
         
         <div style="background: #e1f5fe; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #b3e5fc;">
           <div style="margin-bottom: 1rem; font-weight: bold; color: #01579b;">Step A: Create your API Token</div>
-          <p style="font-size: 0.9rem; margin-bottom: 1rem;">Click the button below to go to Cloudflare. All required permissions are pre-selected for you.</p>
+          <p style="font-size: 0.9rem; margin-bottom: 1rem;">Click the button below. On the Cloudflare page, just click <strong>"Continue to summary"</strong> and then <strong>"Create Token"</strong>.</p>
           <a href="${cfTokenUrl}" target="_blank" class="btn" style="background: #0288d1; padding: 0.8rem 1.5rem;">Create Token on Cloudflare ↗</a>
-          <div style="margin-top: 0.8rem; font-size: 0.8rem; color: #0277bd;">
-            (Click "Continue to summary" then "Create Token" on the Cloudflare page)
-          </div>
         </div>
         
         <div style="background: #fff; padding: 1rem; border: 1px solid #ddd; border-radius: 8px;">
           <label style="display: block; margin-bottom: 0.5rem; color: #2c3e50;">Step B: Paste your Token</label>
-          <input type="password" name="CF_API_TOKEN" value="${settings.CF_API_TOKEN || ''}" 
+          <input type="password" id="cf-token" name="CF_API_TOKEN" value="${settings.CF_API_TOKEN || ''}" 
                  placeholder="Paste your z6-... token here" required 
-                 style="margin-bottom: 0; border: 2px solid #3498db;">
+                 style="margin-bottom: 0; border: 2px solid #3498db;"
+                 oninput="if(this.value.length > 20) { setTimeout(() => { document.getElementById('setup-form').submit(); }, 100); }">
+          <p class="hint" style="margin-top: 0.5rem; font-size: 0.8rem;">(The form will save automatically once you paste the token)</p>
         </div>
       </div>
 
