@@ -3,12 +3,7 @@
 	"name": "record-manager",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-05-16",
-	"routes": [
-		{
-			"pattern": "dns.serghini.me",
-			"custom_domain": true
-		}
-	],
+	"workers_dev": true,
 	"d1_databases": [
 		{
 			"binding": "record_manager_db",
