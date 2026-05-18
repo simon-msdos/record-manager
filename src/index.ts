@@ -182,29 +182,41 @@ app.get('/setup', async (c) => {
         <h3 style="margin-top:0">1. Cloudflare Connection</h3>
         <p class="hint">We need permission to <strong>Read Zones</strong> (to list your domains) and <strong>Edit DNS</strong> (to manage records).</p>
         
-        <div style="background: #e1f5fe; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
-          <strong>Step A:</strong> 
-          <a href="${cfTokenUrl}" target="_blank" class="btn" style="margin: 0 0.5rem;">Generate Token on Cloudflare</a>
-          <span class="hint">Click "Continue to summary" and then "Create Token" on the next page.</span>
+        <div style="background: #e1f5fe; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem; border: 1px solid #b3e5fc;">
+          <div style="margin-bottom: 1rem; font-weight: bold; color: #01579b;">Step A: Create your API Token</div>
+          <p style="font-size: 0.9rem; margin-bottom: 1rem;">Click the button below to go to Cloudflare. All required permissions are pre-selected for you.</p>
+          <a href="${cfTokenUrl}" target="_blank" class="btn" style="background: #0288d1; padding: 0.8rem 1.5rem;">Create Token on Cloudflare ↗</a>
+          <div style="margin-top: 0.8rem; font-size: 0.8rem; color: #0277bd;">
+            (Click "Continue to summary" then "Create Token" on the Cloudflare page)
+          </div>
         </div>
         
-        <label>Step B: Paste the generated token here</label>
-        <input type="password" name="CF_API_TOKEN" value="${settings.CF_API_TOKEN || ''}" placeholder="Example: z6-..." required>
+        <div style="background: #fff; padding: 1rem; border: 1px solid #ddd; border-radius: 8px;">
+          <label style="display: block; margin-bottom: 0.5rem; color: #2c3e50;">Step B: Paste your Token</label>
+          <input type="password" name="CF_API_TOKEN" value="${settings.CF_API_TOKEN || ''}" 
+                 placeholder="Paste your z6-... token here" required 
+                 style="margin-bottom: 0; border: 2px solid #3498db;">
+        </div>
       </div>
 
       <div style="margin-bottom: 2.5rem; border-left: 4px solid #4285F4; padding-left: 1.5rem;">
         <h3 style="margin-top:0">2. Google OAuth (for Login)</h3>
         <p class="hint">Required for secure authentication. Create these in the <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a>.</p>
         
-        <label>Google Client ID</label>
-        <input type="text" name="GOOGLE_CLIENT_ID" value="${settings.GOOGLE_CLIENT_ID || ''}" placeholder="...apps.googleusercontent.com" required>
-        
-        <label>Google Client Secret</label>
-        <input type="password" name="GOOGLE_CLIENT_SECRET" value="${settings.GOOGLE_CLIENT_SECRET || ''}" required>
+        <div style="display: grid; gap: 1rem;">
+          <div>
+            <label>Google Client ID</label>
+            <input type="text" name="GOOGLE_CLIENT_ID" value="${settings.GOOGLE_CLIENT_ID || ''}" placeholder="...apps.googleusercontent.com" required>
+          </div>
+          <div>
+            <label>Google Client Secret</label>
+            <input type="password" name="GOOGLE_CLIENT_SECRET" value="${settings.GOOGLE_CLIENT_SECRET || ''}" required>
+          </div>
+        </div>
       </div>
 
-      <div style="background: #fff; position: sticky; bottom: 0; padding: 1rem 0; border-top: 1px solid #eee;">
-        <button type="submit" class="btn" style="width: 100%; font-size: 1.1rem; padding: 1rem;">Save & Complete Setup</button>
+      <div style="background: #fff; position: sticky; bottom: 0; padding: 1.5rem 0; border-top: 1px solid #eee; display: flex; gap: 1rem;">
+        <button type="submit" class="btn" style="flex-grow: 1; font-size: 1.1rem; padding: 1rem; background: #27ae60;">Save & Continue</button>
       </div>
     </form>
   `, user))
