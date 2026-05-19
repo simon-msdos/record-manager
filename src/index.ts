@@ -888,27 +888,27 @@ app.get('/domains/:id', async (c) => {
 
     <div class="mb-6 flex justify-between items-center gap-4">
       <div class="relative w-full max-w-sm">
-        <input type="text" id="record-search" placeholder="Filter records..." class="w-full pl-10 pr-4 py-2 bg-brand-deep/30 border border-brand-border/20 rounded-lg text-sm text-white placeholder-slate-500 focus:border-brand-primary focus:ring-brand-primary font-mono" onkeyup="filterRecords()">
+        <input type="text" id="record-search" placeholder="Filter records..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:border-brand-primary focus:ring-brand-primary font-mono" onkeyup="filterRecords()">
         <svg class="absolute left-3 top-3 h-4 w-4 text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
       </div>
-      <div class="text-xs text-slate-400 font-mono">Showing ${records.length} records</div>
+      <div class="text-xs text-slate-500 font-mono">Showing ${records.length} records</div>
     </div>
 
     <div class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-brand-border/20">
+      <table class="min-w-full divide-y divide-slate-200">
         <thead class="table-header">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Type</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Name</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Content</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">TTL</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Proxy</th>
-            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Actions</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Type</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Name</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Content</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">TTL</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Proxy</th>
+            <th class="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider font-mono">Actions</th>
           </tr>
         </thead>
-        <tbody id="record-table-body" class="bg-transparent divide-y divide-brand-border/20">
+        <tbody id="record-table-body" class="bg-transparent divide-y divide-slate-100">
           ${records.map((r: any) => {
             const creator = ownershipMap.get(r.id)
             const isOwnerOfRecord = creator === user.email
@@ -932,7 +932,7 @@ app.get('/domains/:id', async (c) => {
               (rPerm === 'delete')
 
             return `
-            <tr class="record-row hover:bg-brand-deep/30 transition-colors" data-search="${r.type} ${r.name} ${r.content}">
+            <tr class="record-row hover:bg-slate-50/80 transition-colors" data-search="${r.type} ${r.name} ${r.content}">
               <td class="px-4 py-4 whitespace-nowrap">
                 <div class="flex flex-col">
                   <span class="badge ${getTypeColor(r.type)} w-min">${r.type}</span>
@@ -940,7 +940,7 @@ app.get('/domains/:id', async (c) => {
                 </div>
               </td>
               <td class="px-4 py-4 whitespace-nowrap">
-                <div class="text-sm font-semibold text-white font-display">${r.name}</div>
+                <div class="text-sm font-semibold text-slate-900 font-display">${r.name}</div>
                 <div class="flex items-center gap-1 mt-0.5">
                   <span class="text-[9px] text-slate-500 font-mono select-all" id="id-${r.id}">${r.id}</span>
                   <button onclick="navigator.clipboard.writeText('${r.id}'); alert('Copied Record ID!')" class="text-[9px] text-slate-400 hover:text-brand-primary font-mono cursor-pointer" title="Copy ID">
@@ -948,16 +948,16 @@ app.get('/domains/:id', async (c) => {
                   </button>
                 </div>
               </td>
-              <td class="px-4 py-4 text-xs text-slate-300 font-mono break-all max-w-xs">${r.content}</td>
-              <td class="px-4 py-4 whitespace-nowrap text-xs text-slate-400 font-mono">${r.ttl === 1 ? 'Auto' : r.ttl}</td>
+              <td class="px-4 py-4 text-xs text-slate-700 font-mono break-all max-w-xs">${r.content}</td>
+              <td class="px-4 py-4 whitespace-nowrap text-xs text-slate-600 font-mono">${r.ttl === 1 ? 'Auto' : r.ttl}</td>
               <td class="px-4 py-4 whitespace-nowrap">
                 ${r.proxied ? `
-                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                    <svg class="h-2 w-2 mr-1.5 text-amber-400" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg> Proxied
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-500/15 text-amber-600 border border-amber-500/30">
+                    <svg class="h-2 w-2 mr-1.5 text-amber-500" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg> Proxied
                   </span>
                 ` : `
-                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-500/15 text-slate-400 border border-slate-500/30">
-                    <svg class="h-2 w-2 mr-1.5 text-slate-400" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg> DNS Only
+                  <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-500/15 text-slate-600 border border-slate-500/30">
+                    <svg class="h-2 w-2 mr-1.5 text-slate-500" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg> DNS Only
                   </span>
                 `}
               </td>
@@ -980,24 +980,24 @@ app.get('/domains/:id', async (c) => {
     </div>
 
     ${isDomainAdmin ? `
-      <div class="mt-12 pt-8 border-t border-brand-border/30">
-        <h3 class="text-xl font-bold font-display text-white mb-2 tracking-tight">Zone Access Delegation</h3>
-        <p class="text-slate-400 text-sm mb-6">Manage clearances and grant specific record privileges specifically for this zone.</p>
+      <div class="mt-12 pt-8 border-t border-slate-200">
+        <h3 class="text-xl font-bold font-display text-slate-900 mb-2 tracking-tight">Zone Access Delegation</h3>
+        <p class="text-slate-500 text-sm mb-6 font-sans">Manage clearances and grant specific record privileges specifically for this zone.</p>
         
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 font-mono">
           <!-- Domain-Wide Clearance -->
-          <div class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
-            <h4 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider">Domain-Wide Clearances</h4>
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+            <h4 class="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider">Domain-Wide Clearances</h4>
             <div class="space-y-4">
-              <ul class="divide-y divide-brand-border/10 max-h-48 overflow-y-auto pr-2">
+              <ul class="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-2">
                 ${domainPermissionsList.map((p: any) => `
                   <li class="py-2.5 flex justify-between items-center text-xs">
-                    <span class="text-slate-300 font-bold">${p.email}</span>
+                    <span class="text-slate-800 font-bold">${p.email}</span>
                     <div class="flex items-center gap-2">
                       <span class="badge badge-user uppercase">${p.level}</span>
                       <form method="POST" action="/domains/${domainId}/delegation/revoke-domain" style="margin:0;">
                         <input type="hidden" name="user_id" value="${p.user_id}">
-                        <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
+                        <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
                       </form>
                     </div>
                   </li>
@@ -1005,11 +1005,11 @@ app.get('/domains/:id', async (c) => {
                 ${domainPermissionsList.length === 0 ? '<li class="text-slate-500 italic py-2">No domain-wide clearances assigned</li>' : ''}
               </ul>
               
-              <form method="POST" action="/domains/${domainId}/delegation/grant-domain" class="flex gap-2 items-center pt-4 border-t border-brand-border/10 flex-wrap">
-                <select name="user_id" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+              <form method="POST" action="/domains/${domainId}/delegation/grant-domain" class="flex gap-2 items-center pt-4 border-t border-slate-200 flex-wrap">
+                <select name="user_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono">
                   ${allUsersList.map((u: any) => `<option value="${u.id}">${u.email}</option>`).join('')}
                 </select>
-                <select name="level" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                <select name="level" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono">
                   <option value="read">Read (View all)</option>
                   <option value="add">Add Only (Add records)</option>
                   <option value="edit_own">Edit Own (Add & manage own records)</option>
@@ -1024,14 +1024,14 @@ app.get('/domains/:id', async (c) => {
           </div>
           
           <!-- Record-Specific Clearance -->
-          <div class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
-            <h4 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider">Record-Specific Access</h4>
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+            <h4 class="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider">Record-Specific Access</h4>
             <div class="space-y-4">
-              <ul class="divide-y divide-brand-border/10 max-h-48 overflow-y-auto pr-2">
+              <ul class="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-2">
                 ${recordPermissionsList.map((rp: any) => `
                   <li class="py-2.5 flex justify-between items-center text-xs">
                     <div class="flex flex-col gap-0.5">
-                      <span class="text-slate-300 font-bold">${rp.email}</span>
+                      <span class="text-slate-800 font-bold">${rp.email}</span>
                       <span class="text-slate-500 text-[10px] truncate max-w-[200px]">ID: ${rp.record_id}</span>
                     </div>
                     <div class="flex items-center gap-2">
@@ -1039,7 +1039,7 @@ app.get('/domains/:id', async (c) => {
                       <form method="POST" action="/domains/${domainId}/delegation/revoke-record" style="margin:0;">
                         <input type="hidden" name="user_id" value="${rp.user_id}">
                         <input type="hidden" name="record_id" value="${rp.record_id}">
-                        <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
+                        <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
                       </form>
                     </div>
                   </li>
@@ -1047,12 +1047,12 @@ app.get('/domains/:id', async (c) => {
                 ${recordPermissionsList.length === 0 ? '<li class="text-slate-500 italic py-2">No record-specific clearances assigned</li>' : ''}
               </ul>
               
-              <form method="POST" action="/domains/${domainId}/delegation/grant-record" class="flex gap-2 items-center pt-4 border-t border-brand-border/10 flex-wrap">
-                <select name="user_id" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+              <form method="POST" action="/domains/${domainId}/delegation/grant-record" class="flex gap-2 items-center pt-4 border-t border-slate-200 flex-wrap">
+                <select name="user_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono">
                   ${allUsersList.map((u: any) => `<option value="${u.id}">${u.email}</option>`).join('')}
                 </select>
-                <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded placeholder-slate-600 w-36">
-                <select name="level" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono placeholder-slate-400 w-36">
+                <select name="level" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono">
                   <option value="read">Read-Only</option>
                   <option value="edit">Edit</option>
                   <option value="delete">Full Control</option>
@@ -1397,31 +1397,31 @@ app.get('/users', async (c) => {
     ` : ''}
     
     <div class="overflow-x-auto mt-10">
-      <table class="min-w-full divide-y divide-brand-border/20 font-mono text-xs">
+      <table class="min-w-full divide-y divide-slate-200 font-mono text-xs">
         <thead class="table-header">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">User</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Role</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Access Clearances</th>
-            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">User</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Role</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Access Clearances</th>
+            <th class="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-brand-border/20 bg-transparent">
+        <tbody class="divide-y divide-slate-100 bg-transparent">
           ${users.map((u: any) => {
             const canManageTarget = isGlobalAdmin && u.role !== 'owner'
             return `
-            <tr class="hover:bg-brand-deep/20 transition-colors">
-              <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-white font-display">${u.email}</td>
+            <tr class="hover:bg-slate-50/50 transition-colors">
+              <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-slate-900 font-display">${u.email}</td>
               <td class="px-4 py-4 whitespace-nowrap">
                 <span class="badge badge-${u.role}">${u.role}</span>
               </td>
-              <td class="px-4 py-4 text-xs text-slate-300">
+              <td class="px-4 py-4 text-xs text-slate-700">
                 ${u.role === 'owner' || u.role === 'admin' || u.role === 'manager' ? `<span class="text-slate-500 italic">Full administrative clearance (${u.role})</span>` : `
                   <div class="space-y-4">
                     <!-- Domain-Wide Clearances -->
                     <div>
                       <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Domain-Wide Access</span>
-                      <ul class="list-disc pl-4 space-y-1 text-slate-400">
+                      <ul class="list-disc pl-4 space-y-1 text-slate-600">
                         ${permissions.filter((p: any) => p.user_id === u.id).map((p: any) => {
                           const d = domains.find((dom: any) => dom.id === p.domain_id)
                           return `
@@ -1429,20 +1429,20 @@ app.get('/users', async (c) => {
                               <span>${d?.zone_name}: <strong class="text-brand-primary uppercase">${p.level}</strong></span>
                               <form method="POST" action="/users/${u.id}/permissions/revoke" style="display:inline; margin:0;">
                                 <input type="hidden" name="domain_id" value="${p.domain_id}">
-                                <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
+                                <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
                               </form>
                             </li>
                           `
                         }).join('')}
-                        ${permissions.filter((p: any) => p.user_id === u.id).length === 0 ? '<li class="text-slate-600 italic list-none pl-0">No domain-wide clearance</li>' : ''}
+                        ${permissions.filter((p: any) => p.user_id === u.id).length === 0 ? '<li class="text-slate-500 italic list-none pl-0">No domain-wide clearance</li>' : ''}
                       </ul>
                       
                       <!-- Grant Domain Access Form -->
                       <form method="POST" action="/users/${u.id}/permissions" class="flex gap-2 mt-2 items-center flex-wrap">
-                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                        <select name="domain_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
                           ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
                         </select>
-                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                        <select name="level" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
                           <option value="read">Read (View all)</option>
                           <option value="add">Add Only (Add records)</option>
                           <option value="edit_own">Edit Own (Add & manage own records)</option>
@@ -1456,9 +1456,9 @@ app.get('/users', async (c) => {
                     </div>
 
                     <!-- Record-Specific Clearances -->
-                    <div class="pt-3 border-t border-brand-border/10">
+                    <div class="pt-3 border-t border-slate-200/60">
                       <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Record-Specific Access</span>
-                      <ul class="list-disc pl-4 space-y-1 text-slate-400">
+                      <ul class="list-disc pl-4 space-y-1 text-slate-600">
                         ${recordPermissions.filter((rp: any) => rp.user_id === u.id).map((rp: any) => {
                           const d = domains.find((dom: any) => dom.id === rp.domain_id)
                           return `
@@ -1467,21 +1467,21 @@ app.get('/users', async (c) => {
                               <form method="POST" action="/users/${u.id}/record-permissions/revoke" style="display:inline; margin:0;">
                                 <input type="hidden" name="domain_id" value="${rp.domain_id}">
                                 <input type="hidden" name="record_id" value="${rp.record_id}">
-                                <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
+                                <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
                               </form>
                             </li>
                           `
                         }).join('')}
-                        ${recordPermissions.filter((rp: any) => rp.user_id === u.id).length === 0 ? '<li class="text-slate-600 italic list-none pl-0">No record-specific clearance</li>' : ''}
+                        ${recordPermissions.filter((rp: any) => rp.user_id === u.id).length === 0 ? '<li class="text-slate-500 italic list-none pl-0">No record-specific clearance</li>' : ''}
                       </ul>
 
                       <!-- Grant Record Access Form -->
                       <form method="POST" action="/users/${u.id}/record-permissions" class="flex gap-2 mt-2 items-center flex-wrap">
-                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                        <select name="domain_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
                           ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
                         </select>
-                        <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded placeholder-slate-600 w-44">
-                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                        <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 placeholder-slate-400 w-44 font-mono">
+                        <select name="level" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
                           <option value="read">Read-Only</option>
                           <option value="edit">Edit</option>
                           <option value="delete">Full Control</option>
@@ -1495,7 +1495,7 @@ app.get('/users', async (c) => {
               <td class="px-4 py-4 whitespace-nowrap text-right text-xs font-bold">
                 ${canManageTarget ? `
                   <form method="POST" action="/users/${u.id}/delete" style="display:inline;" onsubmit="return confirm('Are you sure?')">
-                    <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold transition">Remove Identity</button>
+                    <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold transition">Remove Identity</button>
                   </form>
                 ` : '-'}
               </td>
