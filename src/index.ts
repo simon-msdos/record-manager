@@ -1055,43 +1055,68 @@ app.get('/dashboard', async (c) => {
         </div>
       </div>
 
-      <div id="domain-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        ${displayZones.map((z: any) => {
-          const synced = syncedMap.get(z.id) as any
-          const statusColor = z.status === 'active' ? 'text-green-500' : 'text-amber-500'
-          return `
-            <div class="domain-card group relative bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer" onclick="location.href='${synced ? `/domains/${synced.id}` : '#'}'" data-name="${z.name}">
-              <div class="flex justify-between items-start mb-4">
-                <div class="h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                  <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                  </svg>
-                </div>
-                <div class="flex flex-col items-end">
-                  <span class="text-[10px] font-bold uppercase tracking-widest ${statusColor}">${z.status}</span>
-                  ${synced ? '<span class="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mt-1">Synced</span>' : '<span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">Not Synced</span>'}
-                </div>
-              </div>
-              <h3 class="text-lg font-semibold text-slate-900 mb-1 truncate" title="${z.name}">${z.name}</h3>
-              <p class="text-xs text-slate-400 font-mono mb-4 truncate">${z.id}</p>
-              
-              <div class="flex items-center justify-between pt-4 border-t border-slate-50">
-                ${synced ? `
-                  <a href="/domains/${synced.id}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">Manage Records &rarr;</a>
-                ` : `
-                  ${user.role === 'owner' ? `
-                    <form method="POST" action="/domains/sync" style="margin:0">
-                      <input type="hidden" name="id" value="${z.id}">
-                      <input type="hidden" name="name" value="${z.name}">
-                      <button type="submit" class="text-sm font-medium text-slate-500 hover:text-indigo-600">Enable Sync</button>
-                    </form>
-                  ` : '<span class="text-sm text-slate-400 italic">Access Restricted</span>'}
-                `}
-              </div>
+      ${displayZones.length === 0 ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-8 text-center">
+          <div class="inline-flex items-center justify-center h-16 w-16 rounded-full bg-amber-100 text-amber-600 mb-4">
+            <svg class="h-8 w-8" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h3 class="text-xl font-bold text-slate-900 mb-2">No Domains Found</h3>
+          <p class="text-slate-600 mb-6 max-w-md mx-auto">Cloudflare returned 0 zones for your API token. This usually means the token doesn't have the right permissions or is restricted to the wrong account.</p>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-left max-w-2xl mx-auto mb-8">
+            <div class="bg-white p-4 rounded-xl border border-amber-100">
+              <h4 class="font-bold text-sm mb-1">Check Permissions</h4>
+              <p class="text-xs text-slate-500">Ensure your token has <strong>Zone:Read</strong> and <strong>DNS:Edit</strong> for "All Zones".</p>
             </div>
-          `
-        }).join('')}
-      </div>
+            <div class="bg-white p-4 rounded-xl border border-amber-100">
+              <h4 class="font-bold text-sm mb-1">Check Account</h4>
+              <p class="text-xs text-slate-500">If you have multiple accounts, make sure the token is for the account containing your domains.</p>
+            </div>
+          </div>
+          
+          <a href="/setup" class="btn-primary text-white px-6 py-2 rounded-lg font-medium inline-block">Update API Token</a>
+        </div>
+      ` : `
+        <div id="domain-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          ${displayZones.map((z: any) => {
+            const synced = syncedMap.get(z.id) as any
+            const statusColor = z.status === 'active' ? 'text-green-500' : 'text-amber-500'
+            return `
+              <div class="domain-card group relative bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer" onclick="location.href='${synced ? `/domains/${synced.id}` : '#'}'" data-name="${z.name}">
+                <div class="flex justify-between items-start mb-4">
+                  <div class="h-10 w-10 bg-indigo-50 rounded-lg flex items-center justify-center text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <svg class="h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                    </svg>
+                  </div>
+                  <div class="flex flex-col items-end">
+                    <span class="text-[10px] font-bold uppercase tracking-widest ${statusColor}">${z.status}</span>
+                    ${synced ? '<span class="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mt-1">Synced</span>' : '<span class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">Not Synced</span>'}
+                  </div>
+                </div>
+                <h3 class="text-lg font-semibold text-slate-900 mb-1 truncate" title="${z.name}">${z.name}</h3>
+                <p class="text-xs text-slate-400 font-mono mb-4 truncate">${z.id}</p>
+                
+                <div class="flex items-center justify-between pt-4 border-t border-slate-50">
+                  ${synced ? `
+                    <a href="/domains/${synced.id}" class="text-sm font-medium text-indigo-600 hover:text-indigo-800">Manage Records &rarr;</a>
+                  ` : `
+                    ${user.role === 'owner' ? `
+                      <form method="POST" action="/domains/sync" style="margin:0">
+                        <input type="hidden" name="id" value="${z.id}">
+                        <input type="hidden" name="name" value="${z.name}">
+                        <button type="submit" class="text-sm font-medium text-slate-500 hover:text-indigo-600">Enable Sync</button>
+                      </form>
+                    ` : '<span class="text-sm text-slate-400 italic">Access Restricted</span>'}
+                  `}
+                </div>
+              </div>
+            `
+          }).join('')}
+        </div>
+      `}
 
       <script>
         function filterDomains() {
