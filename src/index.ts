@@ -393,8 +393,9 @@ async function getPermissionLevel(db: D1Database, user: any, domainId: number) {
 const PERMISSION_HIERARCHY: Record<string, number> = {
   'read': 1,
   'add': 2,
-  'edit': 3,
-  'delete': 4
+  'edit_own': 3,
+  'edit': 4,
+  'delete': 5
 }
 
 function can(userLevel: string | null, requiredLevel: string) {
@@ -771,10 +772,24 @@ app.get('/domains/:id', async (c) => {
   if (!domain) return c.text('Domain not found', 404)
   
   const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
-  if (!can(userLevel, 'read')) return c.text('Forbidden', 403)
+  
+  // Fetch record-specific permissions
+  const { results: recordPerms } = await c.env.record_manager_db.prepare(
+    'SELECT record_id, level FROM record_permissions WHERE user_id = ? AND domain_id = ?'
+  ).bind(user.id, domainId).all()
+  
+  const hasAccess = user.role === 'owner' || userLevel || recordPerms.length > 0
+  if (!hasAccess) return c.text('Forbidden', 403)
   
   const cf = new CloudflareClient(c.get('settings').CF_API_TOKEN)
-  const records = await cf.listRecords(domain.zone_id)
+  let records = await cf.listRecords(domain.zone_id)
+  
+  const recordPermMap = new Map(recordPerms.map((rp: any) => [rp.record_id, rp.level]))
+  const isRecordLevelOnly = !userLevel && user.role !== 'owner'
+  
+  if (isRecordLevelOnly) {
+    records = records.filter((r: any) => recordPermMap.has(r.id))
+  }
   
   // Get ownership metadata
   const { results: ownership } = await c.env.record_manager_db.prepare(
@@ -793,6 +808,8 @@ app.get('/domains/:id', async (c) => {
     return colors[type] || 'bg-gray-500/10 text-gray-400 border border-gray-500/20'
   }
 
+  const canAdd = user.role === 'owner' || (userLevel && can(userLevel, 'add'))
+
   return c.html(layout(`Manage ${domain.zone_name}`, `
     <div class="flex justify-between items-center mb-8 pb-4 border-b border-brand-border/30">
       <div>
@@ -800,10 +817,12 @@ app.get('/domains/:id', async (c) => {
         <p class="text-sm text-slate-400">Configure real-time DNS records on Cloudflare edge servers.</p>
       </div>
       <div class="flex gap-2">
-        <button onclick="document.getElementById('add-record-panel').classList.toggle('hidden')" class="btn-primary text-white text-xs px-4 py-2.5 rounded-lg font-bold flex items-center gap-1.5 shadow-md">
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
-          Add Record
-        </button>
+        ${canAdd ? `
+          <button onclick="document.getElementById('add-record-panel').classList.toggle('hidden')" class="btn-primary text-white text-xs px-4 py-2.5 rounded-lg font-bold flex items-center gap-1.5 shadow-md">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+            Add Record
+          </button>
+        ` : ''}
       </div>
     </div>
     
@@ -870,18 +889,39 @@ app.get('/domains/:id', async (c) => {
           ${records.map((r: any) => {
             const creator = ownershipMap.get(r.id)
             const isOwnerOfRecord = creator === user.email
-            const hasEditPermission = can(userLevel, 'edit') || isOwnerOfRecord
-            const hasDeletePermission = can(userLevel, 'delete') || isOwnerOfRecord
+            
+            const rPerm = recordPermMap.get(r.id)
+            
+            const hasEditPermission = 
+              user.role === 'owner' || 
+              (userLevel === 'delete') || 
+              (userLevel === 'edit') || 
+              (userLevel === 'edit_own' && isOwnerOfRecord) ||
+              (rPerm === 'edit' || rPerm === 'delete')
+              
+            const hasDeletePermission = 
+              user.role === 'owner' || 
+              (userLevel === 'delete') || 
+              (userLevel === 'edit_own' && isOwnerOfRecord) ||
+              (rPerm === 'delete')
 
             return `
             <tr class="record-row hover:bg-brand-deep/30 transition-colors" data-search="${r.type} ${r.name} ${r.content}">
               <td class="px-4 py-4 whitespace-nowrap">
                 <div class="flex flex-col">
                   <span class="badge ${getTypeColor(r.type)} w-min">${r.type}</span>
-                  ${isOwnerOfRecord ? '<span class="text-[9px] text-brand-primary font-bold mt-1 uppercase font-mono tracking-wider">Owner Only</span>' : ''}
+                  ${creator ? `<span class="text-[9px] text-slate-500 font-mono mt-1">${creator.split('@')[0]}</span>` : ''}
                 </div>
               </td>
-              <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-white font-display">${r.name}</td>
+              <td class="px-4 py-4 whitespace-nowrap">
+                <div class="text-sm font-semibold text-white font-display">${r.name}</div>
+                <div class="flex items-center gap-1 mt-0.5">
+                  <span class="text-[9px] text-slate-500 font-mono select-all" id="id-${r.id}">${r.id}</span>
+                  <button onclick="navigator.clipboard.writeText('${r.id}'); alert('Copied Record ID!')" class="text-[9px] text-slate-400 hover:text-brand-primary font-mono cursor-pointer" title="Copy ID">
+                    (copy)
+                  </button>
+                </div>
+              </td>
               <td class="px-4 py-4 text-xs text-slate-300 font-mono break-all max-w-xs">${r.content}</td>
               <td class="px-4 py-4 whitespace-nowrap text-xs text-slate-400 font-mono">${r.ttl === 1 ? 'Auto' : r.ttl}</td>
               <td class="px-4 py-4 whitespace-nowrap">
@@ -973,7 +1013,25 @@ app.get('/domains/:id/records/:recordId/edit', async (c) => {
   
   const domain = await c.env.record_manager_db.prepare('SELECT * FROM domains WHERE id = ?').bind(domainId).first<any>()
   const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
-  if (!can(userLevel, 'edit')) return c.text('Forbidden', 403)
+  
+  // Get record owner
+  const recordMetadata = await c.env.record_manager_db.prepare(
+    'SELECT created_by_email FROM record_metadata WHERE record_id = ?'
+  ).bind(recordId).first<any>()
+  const createdByEmail = recordMetadata?.created_by_email || ''
+  
+  // Check record-level permission
+  const recPerm = await c.env.record_manager_db.prepare(
+    'SELECT level FROM record_permissions WHERE user_id = ? AND domain_id = ? AND record_id = ?'
+  ).bind(user.id, domainId, recordId).first<any>()
+  
+  const canEdit = user.role === 'owner' || 
+    (userLevel === 'delete') || 
+    (userLevel === 'edit') || 
+    (userLevel === 'edit_own' && createdByEmail === user.email) ||
+    (recPerm?.level === 'edit' || recPerm?.level === 'delete')
+    
+  if (!canEdit) return c.text('Forbidden', 403)
   
   const cf = new CloudflareClient(c.get('settings').CF_API_TOKEN)
   const records = await cf.listRecords(domain.zone_id)
@@ -1033,7 +1091,25 @@ app.post('/domains/:id/records/:recordId', async (c) => {
   
   const domain = await c.env.record_manager_db.prepare('SELECT * FROM domains WHERE id = ?').bind(domainId).first<any>()
   const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
-  if (!can(userLevel, 'edit')) return c.text('Forbidden', 403)
+  
+  // Get record owner
+  const recordMetadata = await c.env.record_manager_db.prepare(
+    'SELECT created_by_email FROM record_metadata WHERE record_id = ?'
+  ).bind(recordId).first<any>()
+  const createdByEmail = recordMetadata?.created_by_email || ''
+  
+  // Check record-level permission
+  const recPerm = await c.env.record_manager_db.prepare(
+    'SELECT level FROM record_permissions WHERE user_id = ? AND domain_id = ? AND record_id = ?'
+  ).bind(user.id, domainId, recordId).first<any>()
+  
+  const canEdit = user.role === 'owner' || 
+    (userLevel === 'delete') || 
+    (userLevel === 'edit') || 
+    (userLevel === 'edit_own' && createdByEmail === user.email) ||
+    (recPerm?.level === 'edit' || recPerm?.level === 'delete')
+    
+  if (!canEdit) return c.text('Forbidden', 403)
   
   const body = await c.req.parseBody() as any
   
@@ -1063,7 +1139,24 @@ app.post('/domains/:id/records/:recordId/delete', async (c) => {
   
   const domain = await c.env.record_manager_db.prepare('SELECT * FROM domains WHERE id = ?').bind(domainId).first<any>()
   const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
-  if (!can(userLevel, 'delete')) return c.text('Forbidden', 403)
+  
+  // Get record owner
+  const recordMetadata = await c.env.record_manager_db.prepare(
+    'SELECT created_by_email FROM record_metadata WHERE record_id = ?'
+  ).bind(recordId).first<any>()
+  const createdByEmail = recordMetadata?.created_by_email || ''
+  
+  // Check record-level permission
+  const recPerm = await c.env.record_manager_db.prepare(
+    'SELECT level FROM record_permissions WHERE user_id = ? AND domain_id = ? AND record_id = ?'
+  ).bind(user.id, domainId, recordId).first<any>()
+  
+  const canDelete = user.role === 'owner' || 
+    (userLevel === 'delete') || 
+    (userLevel === 'edit_own' && createdByEmail === user.email) ||
+    (recPerm?.level === 'delete')
+    
+  if (!canDelete) return c.text('Forbidden', 403)
   
   const cf = new CloudflareClient(c.get('settings').CF_API_TOKEN)
   // Get record name for audit log before deleting
@@ -1086,6 +1179,7 @@ app.get('/users', async (c) => {
   const { results: users } = await c.env.record_manager_db.prepare('SELECT * FROM users').all()
   const { results: domains } = await c.env.record_manager_db.prepare('SELECT * FROM domains').all()
   const { results: permissions } = await c.env.record_manager_db.prepare('SELECT * FROM permissions').all()
+  const { results: recordPermissions } = await c.env.record_manager_db.prepare('SELECT * FROM record_permissions').all()
 
   return c.html(layout('User Management', `
     <div class="mb-8 border-b border-brand-border/30 pb-5">
@@ -1132,25 +1226,76 @@ app.get('/users', async (c) => {
               </td>
               <td class="px-4 py-4 text-xs text-slate-300 font-mono">
                 ${u.role === 'owner' ? '<span class="text-slate-500 italic">Full Administrative Override</span>' : `
-                  <div class="space-y-3">
-                    <ul class="list-disc pl-4 space-y-1 text-slate-400">
-                      ${permissions.filter((p: any) => p.user_id === u.id).map((p: any) => {
-                        const d = domains.find((dom: any) => dom.id === p.domain_id)
-                        return `<li>${d?.zone_name}: <strong class="text-brand-primary uppercase">${p.level}</strong></li>`
-                      }).join('')}
-                    </ul>
-                    <form method="POST" action="/users/${u.id}/permissions" class="flex gap-2 mt-3 items-center">
-                      <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
-                        ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
-                      </select>
-                      <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
-                        <option value="read">Read</option>
-                        <option value="add">Add</option>
-                        <option value="edit">Edit</option>
-                        <option value="delete">Delete</option>
-                      </select>
-                      <button type="submit" class="bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-2.5 py-1.5 rounded text-xs font-bold hover:bg-brand-primary hover:text-white transition">Grant</button>
-                    </form>
+                  <div class="space-y-4">
+                    <!-- Domain-Wide Clearances -->
+                    <div>
+                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 font-mono">Domain-Wide Access</span>
+                      <ul class="list-disc pl-4 space-y-1 text-slate-400">
+                        ${permissions.filter((p: any) => p.user_id === u.id).map((p: any) => {
+                          const d = domains.find((dom: any) => dom.id === p.domain_id)
+                          return `
+                            <li class="flex items-center gap-2">
+                              <span>${d?.zone_name}: <strong class="text-brand-primary uppercase">${p.level}</strong></span>
+                              <form method="POST" action="/users/${u.id}/permissions/revoke" style="display:inline; margin:0;">
+                                <input type="hidden" name="domain_id" value="${p.domain_id}">
+                                <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
+                              </form>
+                            </li>
+                          `
+                        }).join('')}
+                        ${permissions.filter((p: any) => p.user_id === u.id).length === 0 ? '<li class="text-slate-600 italic list-none pl-0">No domain-wide clearance</li>' : ''}
+                      </ul>
+                      
+                      <!-- Grant Domain Access Form -->
+                      <form method="POST" action="/users/${u.id}/permissions" class="flex gap-2 mt-2 items-center flex-wrap">
+                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                          ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
+                        </select>
+                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                          <option value="read">Read (View all)</option>
+                          <option value="add">Add Only (Add records)</option>
+                          <option value="edit_own">Edit Own (Add & manage own records)</option>
+                          <option value="edit">Edit Any (Add & edit all, no deleting)</option>
+                          <option value="delete">Delete Any (Full management)</option>
+                        </select>
+                        <button type="submit" class="bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-2.5 py-1 rounded text-xs font-bold hover:bg-brand-primary hover:text-white transition">Grant Domain</button>
+                      </form>
+                    </div>
+
+                    <!-- Record-Specific Clearances -->
+                    <div class="pt-3 border-t border-brand-border/10">
+                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 font-mono">Record-Specific Access</span>
+                      <ul class="list-disc pl-4 space-y-1 text-slate-400">
+                        ${recordPermissions.filter((rp: any) => rp.user_id === u.id).map((rp: any) => {
+                          const d = domains.find((dom: any) => dom.id === rp.domain_id)
+                          return `
+                            <li class="flex items-center gap-2">
+                              <span>${d?.zone_name} [<code class="text-brand-secondary text-[10px]">${rp.record_id}</code>]: <strong class="text-brand-secondary uppercase">${rp.level}</strong></span>
+                              <form method="POST" action="/users/${u.id}/record-permissions/revoke" style="display:inline; margin:0;">
+                                <input type="hidden" name="domain_id" value="${rp.domain_id}">
+                                <input type="hidden" name="record_id" value="${rp.record_id}">
+                                <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
+                              </form>
+                            </li>
+                          `
+                        }).join('')}
+                        ${recordPermissions.filter((rp: any) => rp.user_id === u.id).length === 0 ? '<li class="text-slate-600 italic list-none pl-0">No record-specific clearance</li>' : ''}
+                      </ul>
+
+                      <!-- Grant Record Access Form -->
+                      <form method="POST" action="/users/${u.id}/record-permissions" class="flex gap-2 mt-2 items-center flex-wrap">
+                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                          ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
+                        </select>
+                        <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300 placeholder-slate-600 w-44">
+                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                          <option value="read">Read-Only</option>
+                          <option value="edit">Edit</option>
+                          <option value="delete">Full Control</option>
+                        </select>
+                        <button type="submit" class="bg-brand-secondary/10 text-brand-secondary border border-brand-secondary/20 px-2.5 py-1 rounded text-xs font-bold hover:bg-brand-secondary hover:text-white transition">Grant Record</button>
+                      </form>
+                    </div>
                   </div>
                 `}
               </td>
@@ -1189,6 +1334,45 @@ app.post('/users/:id/permissions', async (c) => {
   
   await c.env.record_manager_db.prepare('INSERT INTO permissions (user_id, domain_id, level) VALUES (?, ?, ?) ON CONFLICT(user_id, domain_id) DO UPDATE SET level = ?')
     .bind(userId, parseInt(domain_id), level, level)
+    .run()
+    
+  return c.redirect('/users')
+})
+
+app.post('/users/:id/permissions/revoke', async (c) => {
+  const user = c.get('user')
+  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  const userId = parseInt(c.req.param('id'))
+  const { domain_id } = await c.req.parseBody() as { domain_id: string }
+  
+  await c.env.record_manager_db.prepare('DELETE FROM permissions WHERE user_id = ? AND domain_id = ?')
+    .bind(userId, parseInt(domain_id))
+    .run()
+    
+  return c.redirect('/users')
+})
+
+app.post('/users/:id/record-permissions', async (c) => {
+  const user = c.get('user')
+  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  const userId = parseInt(c.req.param('id'))
+  const { domain_id, record_id, level } = await c.req.parseBody() as { domain_id: string, record_id: string, level: string }
+  
+  await c.env.record_manager_db.prepare('INSERT INTO record_permissions (user_id, domain_id, record_id, level) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, domain_id, record_id) DO UPDATE SET level = ?')
+    .bind(userId, parseInt(domain_id), record_id.trim(), level, level)
+    .run()
+    
+  return c.redirect('/users')
+})
+
+app.post('/users/:id/record-permissions/revoke', async (c) => {
+  const user = c.get('user')
+  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  const userId = parseInt(c.req.param('id'))
+  const { domain_id, record_id } = await c.req.parseBody() as { domain_id: string, record_id: string }
+  
+  await c.env.record_manager_db.prepare('DELETE FROM record_permissions WHERE user_id = ? AND domain_id = ? AND record_id = ?')
+    .bind(userId, parseInt(domain_id), record_id)
     .run()
     
   return c.redirect('/users')
@@ -1334,11 +1518,15 @@ app.get('/dashboard', async (c) => {
     const { results: syncedDomains } = await c.env.record_manager_db.prepare('SELECT * FROM domains').all()
     const syncedMap = new Map(syncedDomains.map((d: any) => [d.zone_id, d]))
 
-    // For non-owners, only show domains they have permissions for
+    // For non-owners, only show domains they have permissions for (domain-wide or record-specific)
     let displayZones = allZones
     if (user.role !== 'owner' && user.role !== 'admin') {
       const { results: permissions } = await c.env.record_manager_db.prepare('SELECT domain_id FROM permissions WHERE user_id = ?').bind(user.id).all()
-      const allowedDomainIds = new Set(permissions.map((p: any) => p.domain_id))
+      const { results: recordPermissions } = await c.env.record_manager_db.prepare('SELECT domain_id FROM record_permissions WHERE user_id = ?').bind(user.id).all()
+      const allowedDomainIds = new Set([
+        ...permissions.map((p: any) => p.domain_id),
+        ...recordPermissions.map((rp: any) => rp.domain_id)
+      ])
       displayZones = allZones.filter((z: any) => {
         const synced = syncedMap.get(z.id) as any
         return synced && allowedDomainIds.has(synced.id)
