@@ -385,7 +385,7 @@ async function isBlacklisted(db: D1Database, name: string) {
 
 async function getPermissionLevel(db: D1Database, user: any, domainId: number) {
   if (!user) return null
-  if (user.role === 'owner') return 'delete'
+  if (user.role === 'owner' || user.role === 'admin' || user.role === 'manager') return 'domain_admin'
   const perm = await db.prepare('SELECT level FROM permissions WHERE user_id = ? AND domain_id = ?').bind(user.id, domainId).first<any>()
   return perm?.level || null
 }
@@ -395,7 +395,9 @@ const PERMISSION_HIERARCHY: Record<string, number> = {
   'add': 2,
   'edit_own': 3,
   'edit': 4,
-  'delete': 5
+  'delete_own': 5,
+  'delete': 6,
+  'domain_admin': 7
 }
 
 function can(userLevel: string | null, requiredLevel: string) {
@@ -778,14 +780,14 @@ app.get('/domains/:id', async (c) => {
     'SELECT record_id, level FROM record_permissions WHERE user_id = ? AND domain_id = ?'
   ).bind(user.id, domainId).all()
   
-  const hasAccess = user.role === 'owner' || userLevel || recordPerms.length > 0
+  const hasAccess = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || userLevel || recordPerms.length > 0
   if (!hasAccess) return c.text('Forbidden', 403)
   
   const cf = new CloudflareClient(c.get('settings').CF_API_TOKEN)
   let records = await cf.listRecords(domain.zone_id)
   
   const recordPermMap = new Map(recordPerms.map((rp: any) => [rp.record_id, rp.level]))
-  const isRecordLevelOnly = !userLevel && user.role !== 'owner'
+  const isRecordLevelOnly = !userLevel && user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager'
   
   if (isRecordLevelOnly) {
     records = records.filter((r: any) => recordPermMap.has(r.id))
@@ -808,7 +810,28 @@ app.get('/domains/:id', async (c) => {
     return colors[type] || 'bg-gray-500/10 text-gray-400 border border-gray-500/20'
   }
 
-  const canAdd = user.role === 'owner' || (userLevel && can(userLevel, 'add'))
+  const canAdd = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || (userLevel && can(userLevel, 'add'))
+
+  // Domain access delegation logic
+  const isDomainAdmin = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || userLevel === 'domain_admin'
+  let domainPermissionsList: any[] = []
+  let recordPermissionsList: any[] = []
+  let allUsersList: any[] = []
+  
+  if (isDomainAdmin) {
+    const { results: dp } = await c.env.record_manager_db.prepare(
+      'SELECT p.*, u.email FROM permissions p JOIN users u ON p.user_id = u.id WHERE p.domain_id = ?'
+    ).bind(domainId).all()
+    domainPermissionsList = dp
+    
+    const { results: rp } = await c.env.record_manager_db.prepare(
+      'SELECT rp.*, u.email FROM record_permissions rp JOIN users u ON rp.user_id = u.id WHERE rp.domain_id = ?'
+    ).bind(domainId).all()
+    recordPermissionsList = rp
+    
+    const { results: uList } = await c.env.record_manager_db.prepare('SELECT id, email FROM users WHERE role = "user"').all()
+    allUsersList = uList
+  }
 
   return c.html(layout(`Manage ${domain.zone_name}`, `
     <div class="flex justify-between items-center mb-8 pb-4 border-b border-brand-border/30">
@@ -893,16 +916,19 @@ app.get('/domains/:id', async (c) => {
             const rPerm = recordPermMap.get(r.id)
             
             const hasEditPermission = 
-              user.role === 'owner' || 
+              user.role === 'owner' || user.role === 'admin' || user.role === 'manager' ||
+              (userLevel === 'domain_admin') ||
               (userLevel === 'delete') || 
+              (userLevel === 'delete_own') || 
               (userLevel === 'edit') || 
               (userLevel === 'edit_own' && isOwnerOfRecord) ||
               (rPerm === 'edit' || rPerm === 'delete')
               
             const hasDeletePermission = 
-              user.role === 'owner' || 
+              user.role === 'owner' || user.role === 'admin' || user.role === 'manager' ||
+              (userLevel === 'domain_admin') ||
               (userLevel === 'delete') || 
-              (userLevel === 'edit_own' && isOwnerOfRecord) ||
+              ((userLevel === 'delete_own' || userLevel === 'edit_own') && isOwnerOfRecord) ||
               (rPerm === 'delete')
 
             return `
@@ -953,6 +979,92 @@ app.get('/domains/:id', async (c) => {
       </table>
     </div>
 
+    ${isDomainAdmin ? `
+      <div class="mt-12 pt-8 border-t border-brand-border/30">
+        <h3 class="text-xl font-bold font-display text-white mb-2 tracking-tight">Zone Access Delegation</h3>
+        <p class="text-slate-400 text-sm mb-6">Manage clearances and grant specific record privileges specifically for this zone.</p>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 font-mono">
+          <!-- Domain-Wide Clearance -->
+          <div class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
+            <h4 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider">Domain-Wide Clearances</h4>
+            <div class="space-y-4">
+              <ul class="divide-y divide-brand-border/10 max-h-48 overflow-y-auto pr-2">
+                ${domainPermissionsList.map((p: any) => `
+                  <li class="py-2.5 flex justify-between items-center text-xs">
+                    <span class="text-slate-300 font-bold">${p.email}</span>
+                    <div class="flex items-center gap-2">
+                      <span class="badge badge-user uppercase">${p.level}</span>
+                      <form method="POST" action="/domains/${domainId}/delegation/revoke-domain" style="margin:0;">
+                        <input type="hidden" name="user_id" value="${p.user_id}">
+                        <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
+                      </form>
+                    </div>
+                  </li>
+                `).join('')}
+                ${domainPermissionsList.length === 0 ? '<li class="text-slate-500 italic py-2">No domain-wide clearances assigned</li>' : ''}
+              </ul>
+              
+              <form method="POST" action="/domains/${domainId}/delegation/grant-domain" class="flex gap-2 items-center pt-4 border-t border-brand-border/10 flex-wrap">
+                <select name="user_id" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                  ${allUsersList.map((u: any) => `<option value="${u.id}">${u.email}</option>`).join('')}
+                </select>
+                <select name="level" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                  <option value="read">Read (View all)</option>
+                  <option value="add">Add Only (Add records)</option>
+                  <option value="edit_own">Edit Own (Add & manage own records)</option>
+                  <option value="edit">Edit Any (Add & edit all, no deleting)</option>
+                  <option value="delete_own">Delete Own (Add & delete own records)</option>
+                  <option value="delete">Delete Any (Full management)</option>
+                  <option value="domain_admin">Domain Admin (Manage & delegate)</option>
+                </select>
+                <button type="submit" class="bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-3 py-1.5 rounded text-xs font-bold hover:bg-brand-primary hover:text-white transition">Grant Clearance</button>
+              </form>
+            </div>
+          </div>
+          
+          <!-- Record-Specific Clearance -->
+          <div class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
+            <h4 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider">Record-Specific Access</h4>
+            <div class="space-y-4">
+              <ul class="divide-y divide-brand-border/10 max-h-48 overflow-y-auto pr-2">
+                ${recordPermissionsList.map((rp: any) => `
+                  <li class="py-2.5 flex justify-between items-center text-xs">
+                    <div class="flex flex-col gap-0.5">
+                      <span class="text-slate-300 font-bold">${rp.email}</span>
+                      <span class="text-slate-500 text-[10px] truncate max-w-[200px]">ID: ${rp.record_id}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                      <span class="badge badge-admin uppercase">${rp.level}</span>
+                      <form method="POST" action="/domains/${domainId}/delegation/revoke-record" style="margin:0;">
+                        <input type="hidden" name="user_id" value="${rp.user_id}">
+                        <input type="hidden" name="record_id" value="${rp.record_id}">
+                        <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
+                      </form>
+                    </div>
+                  </li>
+                `).join('')}
+                ${recordPermissionsList.length === 0 ? '<li class="text-slate-500 italic py-2">No record-specific clearances assigned</li>' : ''}
+              </ul>
+              
+              <form method="POST" action="/domains/${domainId}/delegation/grant-record" class="flex gap-2 items-center pt-4 border-t border-brand-border/10 flex-wrap">
+                <select name="user_id" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                  ${allUsersList.map((u: any) => `<option value="${u.id}">${u.email}</option>`).join('')}
+                </select>
+                <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded placeholder-slate-600 w-36">
+                <select name="level" class="text-xs py-1.5 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
+                  <option value="read">Read-Only</option>
+                  <option value="edit">Edit</option>
+                  <option value="delete">Full Control</option>
+                </select>
+                <button type="submit" class="bg-brand-secondary/10 text-brand-secondary border border-brand-secondary/20 px-3 py-1.5 rounded text-xs font-bold hover:bg-brand-secondary hover:text-white transition">Grant Record</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    ` : ''}
+
     <script>
       function filterRecords() {
         const query = document.getElementById('record-search').value.toLowerCase();
@@ -964,6 +1076,78 @@ app.get('/domains/:id', async (c) => {
       }
     </script>
   `, user))
+})
+
+app.post('/domains/:id/delegation/grant-domain', async (c) => {
+  const user = c.get('user')
+  const domainId = parseInt(c.req.param('id'))
+  if (!user) return c.redirect('/')
+  
+  const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
+  const isDomainAdmin = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || userLevel === 'domain_admin'
+  if (!isDomainAdmin) return c.text('Forbidden', 403)
+  
+  const { user_id, level } = await c.req.parseBody() as { user_id: string, level: string }
+  
+  await c.env.record_manager_db.prepare('INSERT INTO permissions (user_id, domain_id, level) VALUES (?, ?, ?) ON CONFLICT(user_id, domain_id) DO UPDATE SET level = ?')
+    .bind(parseInt(user_id), domainId, level, level)
+    .run()
+    
+  return c.redirect(`/domains/${domainId}`)
+})
+
+app.post('/domains/:id/delegation/revoke-domain', async (c) => {
+  const user = c.get('user')
+  const domainId = parseInt(c.req.param('id'))
+  if (!user) return c.redirect('/')
+  
+  const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
+  const isDomainAdmin = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || userLevel === 'domain_admin'
+  if (!isDomainAdmin) return c.text('Forbidden', 403)
+  
+  const { user_id } = await c.req.parseBody() as { user_id: string }
+  
+  await c.env.record_manager_db.prepare('DELETE FROM permissions WHERE user_id = ? AND domain_id = ?')
+    .bind(parseInt(user_id), domainId)
+    .run()
+    
+  return c.redirect(`/domains/${domainId}`)
+})
+
+app.post('/domains/:id/delegation/grant-record', async (c) => {
+  const user = c.get('user')
+  const domainId = parseInt(c.req.param('id'))
+  if (!user) return c.redirect('/')
+  
+  const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
+  const isDomainAdmin = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || userLevel === 'domain_admin'
+  if (!isDomainAdmin) return c.text('Forbidden', 403)
+  
+  const { user_id, record_id, level } = await c.req.parseBody() as { user_id: string, record_id: string, level: string }
+  
+  await c.env.record_manager_db.prepare('INSERT INTO record_permissions (user_id, domain_id, record_id, level) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, domain_id, record_id) DO UPDATE SET level = ?')
+    .bind(parseInt(user_id), domainId, record_id.trim(), level, level)
+    .run()
+    
+  return c.redirect(`/domains/${domainId}`)
+})
+
+app.post('/domains/:id/delegation/revoke-record', async (c) => {
+  const user = c.get('user')
+  const domainId = parseInt(c.req.param('id'))
+  if (!user) return c.redirect('/')
+  
+  const userLevel = await getPermissionLevel(c.env.record_manager_db, user, domainId)
+  const isDomainAdmin = user.role === 'owner' || user.role === 'admin' || user.role === 'manager' || userLevel === 'domain_admin'
+  if (!isDomainAdmin) return c.text('Forbidden', 403)
+  
+  const { user_id, record_id } = await c.req.parseBody() as { user_id: string, record_id: string }
+  
+  await c.env.record_manager_db.prepare('DELETE FROM record_permissions WHERE user_id = ? AND domain_id = ? AND record_id = ?')
+    .bind(parseInt(user_id), domainId, record_id)
+    .run()
+    
+  return c.redirect(`/domains/${domainId}`)
 })
 
 
@@ -1174,12 +1358,14 @@ app.post('/domains/:id/records/:recordId/delete', async (c) => {
 
 app.get('/users', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.redirect('/')
+  if (!user || (user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager')) return c.redirect('/')
   
   const { results: users } = await c.env.record_manager_db.prepare('SELECT * FROM users').all()
   const { results: domains } = await c.env.record_manager_db.prepare('SELECT * FROM domains').all()
   const { results: permissions } = await c.env.record_manager_db.prepare('SELECT * FROM permissions').all()
   const { results: recordPermissions } = await c.env.record_manager_db.prepare('SELECT * FROM record_permissions').all()
+
+  const isGlobalAdmin = user.role === 'owner' || user.role === 'admin'
 
   return c.html(layout('User Management', `
     <div class="mb-8 border-b border-brand-border/30 pb-5">
@@ -1187,49 +1373,54 @@ app.get('/users', async (c) => {
       <p class="text-slate-400 text-sm">Delegate domain access levels to trusted engineers and external operators.</p>
     </div>
 
-    <div class="mb-8">
-      <h3 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider font-mono">Provision Team Member</h3>
-      <form method="POST" action="/users" class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
-        <div class="flex flex-col md:flex-row gap-4 items-end">
-          <div class="flex-1 w-full">
-            <label class="block text-xs font-bold text-slate-400 mb-1.5 uppercase font-mono">Email Address</label>
-            <input type="email" name="email" placeholder="user@example.com" required class="w-full text-xs font-mono">
+    ${isGlobalAdmin ? `
+      <div class="mb-8">
+        <h3 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider font-mono">Provision Team Member</h3>
+        <form method="POST" action="/users" class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
+          <div class="flex flex-col md:flex-row gap-4 items-end">
+            <div class="flex-1 w-full">
+              <label class="block text-xs font-bold text-slate-400 mb-1.5 uppercase font-mono">Email Address</label>
+              <input type="email" name="email" placeholder="user@example.com" required class="w-full text-xs font-mono">
+            </div>
+            <div class="w-full md:w-64">
+              <label class="block text-xs font-bold text-slate-400 mb-1.5 uppercase font-mono">System Role</label>
+              <select name="role" class="w-full text-xs">
+                <option value="user">User (Governed by domain/record permissions)</option>
+                <option value="manager">Manager (Manage records & permissions, no global settings)</option>
+                <option value="admin">Admin (Full global database access)</option>
+              </select>
+            </div>
+            <button type="submit" class="w-full md:w-auto btn-primary text-white px-6 py-2.5 rounded-xl font-bold text-xs tracking-wider transition">Add Identity</button>
           </div>
-          <div class="w-full md:w-48">
-            <label class="block text-xs font-bold text-slate-400 mb-1.5 uppercase font-mono">System Role</label>
-            <select name="role" class="w-full text-xs">
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <button type="submit" class="w-full md:w-auto btn-primary text-white px-6 py-2.5 rounded-xl font-bold text-xs tracking-wider transition">Add Identity</button>
-        </div>
-      </form>
-    </div>
+        </form>
+      </div>
+    ` : ''}
     
     <div class="overflow-x-auto mt-10">
-      <table class="min-w-full divide-y divide-brand-border/20">
+      <table class="min-w-full divide-y divide-brand-border/20 font-mono text-xs">
         <thead class="table-header">
           <tr>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">User</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Role</th>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Access Clearances</th>
-            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Actions</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">User</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Role</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase tracking-wider">Access Clearances</th>
+            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-brand-border/20 bg-transparent">
-          ${users.map((u: any) => `
+          ${users.map((u: any) => {
+            const canManageTarget = isGlobalAdmin && u.role !== 'owner'
+            return `
             <tr class="hover:bg-brand-deep/20 transition-colors">
               <td class="px-4 py-4 whitespace-nowrap text-sm font-semibold text-white font-display">${u.email}</td>
               <td class="px-4 py-4 whitespace-nowrap">
                 <span class="badge badge-${u.role}">${u.role}</span>
               </td>
-              <td class="px-4 py-4 text-xs text-slate-300 font-mono">
-                ${u.role === 'owner' ? '<span class="text-slate-500 italic">Full Administrative Override</span>' : `
+              <td class="px-4 py-4 text-xs text-slate-300">
+                ${u.role === 'owner' || u.role === 'admin' || u.role === 'manager' ? `<span class="text-slate-500 italic">Full administrative clearance (${u.role})</span>` : `
                   <div class="space-y-4">
                     <!-- Domain-Wide Clearances -->
                     <div>
-                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 font-mono">Domain-Wide Access</span>
+                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Domain-Wide Access</span>
                       <ul class="list-disc pl-4 space-y-1 text-slate-400">
                         ${permissions.filter((p: any) => p.user_id === u.id).map((p: any) => {
                           const d = domains.find((dom: any) => dom.id === p.domain_id)
@@ -1248,15 +1439,17 @@ app.get('/users', async (c) => {
                       
                       <!-- Grant Domain Access Form -->
                       <form method="POST" action="/users/${u.id}/permissions" class="flex gap-2 mt-2 items-center flex-wrap">
-                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
                           ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
                         </select>
-                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
                           <option value="read">Read (View all)</option>
                           <option value="add">Add Only (Add records)</option>
                           <option value="edit_own">Edit Own (Add & manage own records)</option>
                           <option value="edit">Edit Any (Add & edit all, no deleting)</option>
+                          <option value="delete_own">Delete Own (Add & delete own records)</option>
                           <option value="delete">Delete Any (Full management)</option>
+                          <option value="domain_admin">Domain Admin (Manage & delegate)</option>
                         </select>
                         <button type="submit" class="bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-2.5 py-1 rounded text-xs font-bold hover:bg-brand-primary hover:text-white transition">Grant Domain</button>
                       </form>
@@ -1264,7 +1457,7 @@ app.get('/users', async (c) => {
 
                     <!-- Record-Specific Clearances -->
                     <div class="pt-3 border-t border-brand-border/10">
-                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1 font-mono">Record-Specific Access</span>
+                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Record-Specific Access</span>
                       <ul class="list-disc pl-4 space-y-1 text-slate-400">
                         ${recordPermissions.filter((rp: any) => rp.user_id === u.id).map((rp: any) => {
                           const d = domains.find((dom: any) => dom.id === rp.domain_id)
@@ -1284,11 +1477,11 @@ app.get('/users', async (c) => {
 
                       <!-- Grant Record Access Form -->
                       <form method="POST" action="/users/${u.id}/record-permissions" class="flex gap-2 mt-2 items-center flex-wrap">
-                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                        <select name="domain_id" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
                           ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
                         </select>
-                        <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300 placeholder-slate-600 w-44">
-                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded font-mono text-slate-300">
+                        <input type="text" name="record_id" placeholder="Record ID (e.g. 7ce6...)" required class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded placeholder-slate-600 w-44">
+                        <select name="level" class="text-xs py-1 px-2 border-brand-border/30 bg-slate-900 rounded text-slate-300">
                           <option value="read">Read-Only</option>
                           <option value="edit">Edit</option>
                           <option value="delete">Full Control</option>
@@ -1300,14 +1493,14 @@ app.get('/users', async (c) => {
                 `}
               </td>
               <td class="px-4 py-4 whitespace-nowrap text-right text-xs font-bold">
-                ${u.role !== 'owner' ? `
+                ${canManageTarget ? `
                   <form method="POST" action="/users/${u.id}/delete" style="display:inline;" onsubmit="return confirm('Are you sure?')">
                     <button type="submit" class="text-rose-500 hover:text-rose-400 font-bold transition">Remove Identity</button>
                   </form>
                 ` : '-'}
               </td>
             </tr>
-          `).join('')}
+          `}).join('')}
         </tbody>
       </table>
     </div>
@@ -1316,7 +1509,7 @@ app.get('/users', async (c) => {
 
 app.post('/users', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  if (!user || (user.role !== 'owner' && user.role !== 'admin')) return c.text('Forbidden', 403)
   const { email, role } = await c.req.parseBody() as { email: string, role: string }
   
   await c.env.record_manager_db.prepare('INSERT INTO users (email, role) VALUES (?, ?) ON CONFLICT(email) DO UPDATE SET role = ?')
@@ -1328,7 +1521,7 @@ app.post('/users', async (c) => {
 
 app.post('/users/:id/permissions', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  if (!user || (user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager')) return c.text('Forbidden', 403)
   const userId = parseInt(c.req.param('id'))
   const { domain_id, level } = await c.req.parseBody() as { domain_id: string, level: string }
   
@@ -1341,7 +1534,7 @@ app.post('/users/:id/permissions', async (c) => {
 
 app.post('/users/:id/permissions/revoke', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  if (!user || (user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager')) return c.text('Forbidden', 403)
   const userId = parseInt(c.req.param('id'))
   const { domain_id } = await c.req.parseBody() as { domain_id: string }
   
@@ -1354,7 +1547,7 @@ app.post('/users/:id/permissions/revoke', async (c) => {
 
 app.post('/users/:id/record-permissions', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  if (!user || (user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager')) return c.text('Forbidden', 403)
   const userId = parseInt(c.req.param('id'))
   const { domain_id, record_id, level } = await c.req.parseBody() as { domain_id: string, record_id: string, level: string }
   
@@ -1367,7 +1560,7 @@ app.post('/users/:id/record-permissions', async (c) => {
 
 app.post('/users/:id/record-permissions/revoke', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  if (!user || (user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager')) return c.text('Forbidden', 403)
   const userId = parseInt(c.req.param('id'))
   const { domain_id, record_id } = await c.req.parseBody() as { domain_id: string, record_id: string }
   
@@ -1380,7 +1573,7 @@ app.post('/users/:id/record-permissions/revoke', async (c) => {
 
 app.post('/users/:id/delete', async (c) => {
   const user = c.get('user')
-  if (!user || user.role !== 'owner') return c.text('Forbidden', 403)
+  if (!user || (user.role !== 'owner' && user.role !== 'admin')) return c.text('Forbidden', 403)
   const userId = parseInt(c.req.param('id'))
   
   const target = await c.env.record_manager_db.prepare('SELECT role FROM users WHERE id = ?').bind(userId).first<any>()
@@ -1392,7 +1585,7 @@ app.post('/users/:id/delete', async (c) => {
 
 app.get('/logs', async (c) => {
   const user = c.get('user')
-  if (!user || (user.role !== 'owner' && user.role !== 'admin')) return c.redirect('/')
+  if (!user || (user.role !== 'owner' && user.role !== 'admin' && user.role !== 'manager')) return c.redirect('/')
   
   const { results: logs } = await c.env.record_manager_db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT 100').all()
   
