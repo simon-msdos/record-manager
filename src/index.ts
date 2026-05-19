@@ -70,6 +70,30 @@ const layout = (title: string, content: string, user?: any) => {
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
     </style>
+    <script>
+        // Auto-refresh logic for real-time feel
+        if (window.location.pathname !== '/' && window.location.pathname !== '/setup') {
+            setInterval(() => {
+                // Only refresh if the user is not actively typing in a search box or form
+                const activeEl = document.activeElement;
+                const isTyping = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
+                if (!isTyping) {
+                    fetch(window.location.href)
+                        .then(response => response.text())
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, 'text/html');
+                            const newContent = doc.querySelector('.card').innerHTML;
+                            const currentContent = document.querySelector('.card').innerHTML;
+                            if (newContent !== currentContent) {
+                                document.querySelector('.card').innerHTML = newContent;
+                                console.log('Content updated via live refresh');
+                            }
+                        });
+                }
+            }, 30000); // 30 seconds
+        }
+    </script>
 </head>
 <body class="h-full overflow-hidden">
     <div class="flex h-full">
@@ -81,6 +105,15 @@ const layout = (title: string, content: string, user?: any) => {
                     <span class="text-white text-xl font-bold tracking-tight">Record Manager <span class="text-indigo-500">v2</span></span>
                 </div>
                 <div class="flex-1 flex flex-col overflow-y-auto pt-5 pb-4">
+                    <div class="px-4 mb-6">
+                        <div class="flex items-center gap-2 px-3 py-2 bg-slate-800 rounded-lg border border-slate-700">
+                            <span class="relative flex h-2 w-2">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                            </span>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Connection</span>
+                        </div>
+                    </div>
                     <nav class="flex-1 px-2 space-y-1">
                         ${sidebarItems.map(item => `
                             <a href="${item.href}" class="group flex items-center px-3 py-2 text-sm font-medium rounded-md text-slate-300 hover:text-white hover:bg-slate-800 transition-colors">
@@ -526,6 +559,12 @@ app.get('/domains/:id', async (c) => {
   const cf = new CloudflareClient(c.get('settings').CF_API_TOKEN)
   const records = await cf.listRecords(domain.zone_id)
   
+  // Get ownership metadata
+  const { results: ownership } = await c.env.record_manager_db.prepare(
+    'SELECT record_id, created_by_email FROM record_metadata WHERE domain_id = ?'
+  ).bind(domainId).all()
+  const ownershipMap = new Map(ownership.map((o: any) => [o.record_id, o.created_by_email]))
+
   const getTypeColor = (type: string) => {
     const colors: any = {
       'A': 'bg-blue-100 text-blue-800',
@@ -611,10 +650,19 @@ app.get('/domains/:id', async (c) => {
           </tr>
         </thead>
         <tbody id="record-table-body" class="bg-white divide-y divide-slate-100">
-          ${records.map((r: any) => `
+          ${records.map((r: any) => {
+            const creator = ownershipMap.get(r.id)
+            const isOwnerOfRecord = creator === user.email
+            const hasEditPermission = can(userLevel, 'edit') || isOwnerOfRecord
+            const hasDeletePermission = can(userLevel, 'delete') || isOwnerOfRecord
+
+            return `
             <tr class="record-row hover:bg-slate-50 transition-colors" data-search="${r.type} ${r.name} ${r.content}">
               <td class="px-4 py-4 whitespace-nowrap">
-                <span class="badge ${getTypeColor(r.type)}">${r.type}</span>
+                <div class="flex flex-col">
+                  <span class="badge ${getTypeColor(r.type)} w-min">${r.type}</span>
+                  ${isOwnerOfRecord ? '<span class="text-[10px] text-indigo-500 font-bold mt-1 uppercase">Created by You</span>' : ''}
+                </div>
               </td>
               <td class="px-4 py-4 whitespace-nowrap text-sm font-medium text-slate-900">${r.name}</td>
               <td class="px-4 py-4 text-sm text-slate-500 font-mono break-all max-w-xs">${r.content}</td>
@@ -632,8 +680,8 @@ app.get('/domains/:id', async (c) => {
               </td>
               <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
                 <div class="flex justify-end gap-2">
-                  ${can(userLevel, 'edit') ? `<a href="/domains/${domainId}/records/${r.id}/edit" class="text-indigo-600 hover:text-indigo-900 p-1 rounded-md hover:bg-indigo-50" title="Edit"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></a>` : ''}
-                  ${can(userLevel, 'delete') ? `
+                  ${hasEditPermission ? `<a href="/domains/${domainId}/records/${r.id}/edit" class="text-indigo-600 hover:text-indigo-900 p-1 rounded-md hover:bg-indigo-50" title="Edit"><svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></a>` : ''}
+                  ${hasDeletePermission ? `
                     <form method="POST" action="/domains/${domainId}/records/${r.id}/delete" style="display:inline;" onsubmit="return confirm('Are you sure?')">
                       <button type="submit" class="text-red-600 hover:text-red-900 p-1 rounded-md hover:bg-red-50" title="Delete">
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -643,7 +691,7 @@ app.get('/domains/:id', async (c) => {
                 </div>
               </td>
             </tr>
-          `).join('')}
+          `}).join('')}
         </tbody>
       </table>
     </div>
@@ -690,6 +738,13 @@ app.post('/domains/:id/records', async (c) => {
   
   await logAudit(c.env.record_manager_db, user.email, 'CREATE', 'RECORD', body.name, { domain: domain.zone_name, type: body.type, content: body.content })
   
+  // Track ownership
+  if (result && result.id) {
+    await c.env.record_manager_db.prepare(
+      'INSERT INTO record_metadata (record_id, domain_id, created_by_email) VALUES (?, ?, ?)'
+    ).bind(result.id, domainId, user.email).run()
+  }
+
   return c.redirect(`/domains/${domainId}`)
 })
 
