@@ -770,6 +770,16 @@ app.get('/domains/:id', async (c) => {
   const domainId = parseInt(c.req.param('id'))
   if (!user) return c.redirect('/')
   
+  const levels = [
+    { key: 'read', short: 'READ', desc: 'Read-only access to all zone records' },
+    { key: 'add', short: 'ADD', desc: 'Create new records (cannot edit/delete existing)' },
+    { key: 'edit_own', short: 'EDIT OWN', desc: 'Create + manage only own records' },
+    { key: 'edit', short: 'EDIT ANY', desc: 'Create + edit all records (no deleting)' },
+    { key: 'delete_own', short: 'DEL OWN', desc: 'Create + edit all + delete own records' },
+    { key: 'delete', short: 'DEL ANY', desc: 'Full management over all records' },
+    { key: 'domain_admin', short: 'ADMIN', desc: 'Full administration & domain delegation' }
+  ]
+  
   const domain = await c.env.record_manager_db.prepare('SELECT * FROM domains WHERE id = ?').bind(domainId).first<any>()
   if (!domain) return c.text('Domain not found', 404)
   
@@ -984,47 +994,54 @@ app.get('/domains/:id', async (c) => {
         <h3 class="text-xl font-bold font-display text-slate-900 mb-2 tracking-tight">Zone Access Delegation</h3>
         <p class="text-slate-500 text-sm mb-6 font-sans">Manage clearances and grant specific record privileges specifically for this zone.</p>
         
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 font-mono">
-          <!-- Domain-Wide Clearance -->
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6">
-            <h4 class="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider">Domain-Wide Clearances</h4>
+        <div class="flex flex-col gap-8 font-mono">
+          <!-- Domain Access Matrix Card -->
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 w-full">
+            <h4 class="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider">Domain Access Matrix</h4>
             <div class="space-y-4">
-              <ul class="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-2">
-                ${domainPermissionsList.map((p: any) => `
-                  <li class="py-2.5 flex justify-between items-center text-xs">
-                    <span class="text-slate-800 font-bold">${p.email}</span>
-                    <div class="flex items-center gap-2">
-                      <span class="badge badge-user uppercase">${p.level}</span>
-                      <form method="POST" action="/domains/${domainId}/delegation/revoke-domain" style="margin:0;">
-                        <input type="hidden" name="user_id" value="${p.user_id}">
-                        <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold bg-transparent border-0 p-0 cursor-pointer text-xs">(revoke)</button>
-                      </form>
+              <div class="divide-y divide-slate-200">
+                ${allUsersList.map((u: any) => {
+                  const currentPerm = domainPermissionsList.find((p: any) => p.user_id === u.id)
+                  const currentLevel = currentPerm ? currentPerm.level : 'none'
+                  
+                  return `
+                    <div class="py-3 flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+                      <div class="flex flex-col">
+                        <span class="text-slate-800 font-bold text-xs">${u.email}</span>
+                        <span class="text-[9px] text-slate-400 font-mono">System Role: ${u.role}</span>
+                      </div>
+                      <div class="inline-flex flex-wrap items-center bg-slate-200/50 p-1 rounded-xl border border-slate-200/30 gap-1">
+                        <!-- NONE Button -->
+                        <form method="POST" action="/domains/${domainId}/delegation/revoke-domain" class="inline" style="margin:0;">
+                          <input type="hidden" name="user_id" value="${u.id}">
+                          <button type="submit" class="px-2.5 py-1 text-[9px] font-bold rounded-lg transition-all ${currentLevel === 'none' ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-500 hover:text-rose-600 hover:bg-slate-200/80'}" title="No access">
+                            NONE
+                          </button>
+                        </form>
+                        
+                        <!-- Levels -->
+                        ${levels.map(lvl => {
+                          const isActive = currentLevel === lvl.key
+                          return `
+                            <form method="POST" action="/domains/${domainId}/delegation/grant-domain" class="inline" style="margin:0;">
+                              <input type="hidden" name="user_id" value="${u.id}">
+                              <input type="hidden" name="level" value="${lvl.key}">
+                              <button type="submit" class="px-2.5 py-1 text-[9px] font-bold rounded-lg transition-all ${isActive ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-200/80'}" title="${lvl.desc}">
+                                ${lvl.short}
+                              </button>
+                            </form>
+                          `
+                        }).join('')}
+                      </div>
                     </div>
-                  </li>
-                `).join('')}
-                ${domainPermissionsList.length === 0 ? '<li class="text-slate-500 italic py-2">No domain-wide clearances assigned</li>' : ''}
-              </ul>
-              
-              <form method="POST" action="/domains/${domainId}/delegation/grant-domain" class="flex gap-2 items-center pt-4 border-t border-slate-200 flex-wrap">
-                <select name="user_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono">
-                  ${allUsersList.map((u: any) => `<option value="${u.id}">${u.email}</option>`).join('')}
-                </select>
-                <select name="level" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900 font-mono">
-                  <option value="read">Read (View all)</option>
-                  <option value="add">Add Only (Add records)</option>
-                  <option value="edit_own">Edit Own (Add & manage own records)</option>
-                  <option value="edit">Edit Any (Add & edit all, no deleting)</option>
-                  <option value="delete_own">Delete Own (Add & delete own records)</option>
-                  <option value="delete">Delete Any (Full management)</option>
-                  <option value="domain_admin">Domain Admin (Manage & delegate)</option>
-                </select>
-                <button type="submit" class="bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-3 py-1.5 rounded text-xs font-bold hover:bg-brand-primary hover:text-white transition">Grant Clearance</button>
-              </form>
+                  `
+                }).join('')}
+              </div>
             </div>
           </div>
           
           <!-- Record-Specific Clearance -->
-          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-6 w-full">
             <h4 class="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider">Record-Specific Access</h4>
             <div class="space-y-4">
               <ul class="divide-y divide-slate-200/60 max-h-48 overflow-y-auto pr-2">
@@ -1367,23 +1384,33 @@ app.get('/users', async (c) => {
 
   const isGlobalAdmin = user.role === 'owner' || user.role === 'admin'
 
+  const levels = [
+    { key: 'read', short: 'READ', desc: 'Read-only access to all zone records' },
+    { key: 'add', short: 'ADD', desc: 'Create new records (cannot edit/delete existing)' },
+    { key: 'edit_own', short: 'EDIT OWN', desc: 'Create + manage only own records' },
+    { key: 'edit', short: 'EDIT ANY', desc: 'Create + edit all records (no deleting)' },
+    { key: 'delete_own', short: 'DEL OWN', desc: 'Create + edit all + delete own records' },
+    { key: 'delete', short: 'DEL ANY', desc: 'Full management over all records' },
+    { key: 'domain_admin', short: 'ADMIN', desc: 'Full administration & domain delegation' }
+  ]
+
   return c.html(layout('User Management', `
-    <div class="mb-8 border-b border-brand-border/30 pb-5">
-      <h2 class="text-2xl font-bold font-display text-white mb-2 tracking-tight">Identity Management</h2>
-      <p class="text-slate-400 text-sm">Delegate domain access levels to trusted engineers and external operators.</p>
+    <div class="mb-8 border-b border-slate-200 pb-5">
+      <h2 class="text-2xl font-bold font-display text-slate-900 mb-2 tracking-tight">Identity Management</h2>
+      <p class="text-slate-500 text-sm">Delegate domain access levels to trusted engineers and external operators.</p>
     </div>
 
     ${isGlobalAdmin ? `
       <div class="mb-8">
-        <h3 class="text-xs font-bold text-slate-300 mb-4 uppercase tracking-wider font-mono">Provision Team Member</h3>
-        <form method="POST" action="/users" class="bg-brand-deep/30 border border-brand-border/20 rounded-2xl p-6">
+        <h3 class="text-xs font-bold text-slate-700 mb-4 uppercase tracking-wider font-mono">Provision Team Member</h3>
+        <form method="POST" action="/users" class="bg-slate-50 border border-slate-200 rounded-2xl p-6">
           <div class="flex flex-col md:flex-row gap-4 items-end">
             <div class="flex-1 w-full">
-              <label class="block text-xs font-bold text-slate-400 mb-1.5 uppercase font-mono">Email Address</label>
+              <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase font-mono">Email Address</label>
               <input type="email" name="email" placeholder="user@example.com" required class="w-full text-xs font-mono">
             </div>
             <div class="w-full md:w-64">
-              <label class="block text-xs font-bold text-slate-400 mb-1.5 uppercase font-mono">System Role</label>
+              <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase font-mono">System Role</label>
               <select name="role" class="w-full text-xs">
                 <option value="user">User (Governed by domain/record permissions)</option>
                 <option value="manager">Manager (Manage records & permissions, no global settings)</option>
@@ -1417,66 +1444,77 @@ app.get('/users', async (c) => {
               </td>
               <td class="px-4 py-4 text-xs text-slate-700">
                 ${u.role === 'owner' || u.role === 'admin' || u.role === 'manager' ? `<span class="text-slate-500 italic">Full administrative clearance (${u.role})</span>` : `
-                  <div class="space-y-4">
-                    <!-- Domain-Wide Clearances -->
+                  <div class="space-y-6">
+                    <!-- Domain-Wide Clearances (Discord-style switcher) -->
                     <div>
-                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Domain-Wide Access</span>
-                      <ul class="list-disc pl-4 space-y-1 text-slate-600">
-                        ${permissions.filter((p: any) => p.user_id === u.id).map((p: any) => {
-                          const d = domains.find((dom: any) => dom.id === p.domain_id)
+                      <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 font-mono">Domain Clearance Switcher</span>
+                      <div class="space-y-3">
+                        ${domains.map((d: any) => {
+                          const currentPerm = permissions.find((p: any) => p.user_id === u.id && p.domain_id === d.id)
+                          const currentLevel = currentPerm ? currentPerm.level : 'none'
+                          
                           return `
-                            <li class="flex items-center gap-2">
-                              <span>${d?.zone_name}: <strong class="text-brand-primary uppercase">${p.level}</strong></span>
-                              <form method="POST" action="/users/${u.id}/permissions/revoke" style="display:inline; margin:0;">
-                                <input type="hidden" name="domain_id" value="${p.domain_id}">
-                                <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
-                              </form>
-                            </li>
+                            <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                              <span class="font-bold text-slate-800 text-xs truncate max-w-[200px]" title="${d.zone_name}">${d.zone_name}</span>
+                              <div class="inline-flex flex-wrap items-center bg-slate-200/50 p-1 rounded-xl border border-slate-200/30 gap-1">
+                                <!-- NONE Button -->
+                                <form method="POST" action="/users/${u.id}/permissions/revoke" class="inline" style="margin:0;">
+                                  <input type="hidden" name="domain_id" value="${d.id}">
+                                  <button type="submit" class="px-2.5 py-1 text-[9px] font-bold rounded-lg transition-all ${currentLevel === 'none' ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-500 hover:text-rose-600 hover:bg-slate-200/80'}" title="No access">
+                                    NONE
+                                  </button>
+                                </form>
+                                
+                                <!-- levels -->
+                                ${levels.map(lvl => {
+                                  const isActive = currentLevel === lvl.key
+                                  return `
+                                    <form method="POST" action="/users/${u.id}/permissions" class="inline" style="margin:0;">
+                                      <input type="hidden" name="domain_id" value="${d.id}">
+                                      <input type="hidden" name="level" value="${lvl.key}">
+                                      <button type="submit" class="px-2.5 py-1 text-[9px] font-bold rounded-lg transition-all ${isActive ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-indigo-600 hover:bg-slate-200/80'}" title="${lvl.desc}">
+                                        ${lvl.short}
+                                      </button>
+                                    </form>
+                                  `
+                                }).join('')}
+                              </div>
+                            </div>
                           `
                         }).join('')}
-                        ${permissions.filter((p: any) => p.user_id === u.id).length === 0 ? '<li class="text-slate-500 italic list-none pl-0">No domain-wide clearance</li>' : ''}
-                      </ul>
-                      
-                      <!-- Grant Domain Access Form -->
-                      <form method="POST" action="/users/${u.id}/permissions" class="flex gap-2 mt-2 items-center flex-wrap">
-                        <select name="domain_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
-                          ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
-                        </select>
-                        <select name="level" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
-                          <option value="read">Read (View all)</option>
-                          <option value="add">Add Only (Add records)</option>
-                          <option value="edit_own">Edit Own (Add & manage own records)</option>
-                          <option value="edit">Edit Any (Add & edit all, no deleting)</option>
-                          <option value="delete_own">Delete Own (Add & delete own records)</option>
-                          <option value="delete">Delete Any (Full management)</option>
-                          <option value="domain_admin">Domain Admin (Manage & delegate)</option>
-                        </select>
-                        <button type="submit" class="bg-brand-primary/10 text-brand-primary border border-brand-primary/20 px-2.5 py-1 rounded text-xs font-bold hover:bg-brand-primary hover:text-white transition">Grant Domain</button>
-                      </form>
+                      </div>
                     </div>
 
-                    <!-- Record-Specific Clearances -->
-                    <div class="pt-3 border-t border-slate-200/60">
-                      <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Record-Specific Access</span>
-                      <ul class="list-disc pl-4 space-y-1 text-slate-600">
+                    <!-- Record-Specific Access -->
+                    <div class="pt-4 border-t border-slate-200/60">
+                      <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2 font-mono">Record-Specific Privileges</span>
+                      <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
                         ${recordPermissions.filter((rp: any) => rp.user_id === u.id).map((rp: any) => {
                           const d = domains.find((dom: any) => dom.id === rp.domain_id)
                           return `
-                            <li class="flex items-center gap-2">
-                              <span>${d?.zone_name} [<code class="text-brand-secondary text-[10px]">${rp.record_id}</code>]: <strong class="text-brand-secondary uppercase">${rp.level}</strong></span>
-                              <form method="POST" action="/users/${u.id}/record-permissions/revoke" style="display:inline; margin:0;">
-                                <input type="hidden" name="domain_id" value="${rp.domain_id}">
-                                <input type="hidden" name="record_id" value="${rp.record_id}">
-                                <button type="submit" class="text-rose-500 hover:text-rose-600 font-bold transition text-[10px] bg-transparent border-0 p-0 cursor-pointer">(revoke)</button>
-                              </form>
-                            </li>
+                            <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs">
+                              <div class="flex flex-col">
+                                <span class="font-bold text-slate-800">${d?.zone_name}</span>
+                                <code class="text-brand-secondary text-[10px] font-mono select-all">ID: ${rp.record_id}</code>
+                              </div>
+                              <div class="flex items-center gap-2">
+                                <span class="badge badge-admin uppercase font-mono">${rp.level}</span>
+                                <form method="POST" action="/users/${u.id}/record-permissions/revoke" style="display:inline; margin:0;">
+                                  <input type="hidden" name="domain_id" value="${rp.domain_id}">
+                                  <input type="hidden" name="record_id" value="${rp.record_id}">
+                                  <button type="submit" class="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 p-1.5 rounded-lg transition" title="Revoke Privilege">
+                                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                  </button>
+                                </form>
+                              </div>
+                            </div>
                           `
                         }).join('')}
-                        ${recordPermissions.filter((rp: any) => rp.user_id === u.id).length === 0 ? '<li class="text-slate-500 italic list-none pl-0">No record-specific clearance</li>' : ''}
-                      </ul>
+                        ${recordPermissions.filter((rp: any) => rp.user_id === u.id).length === 0 ? '<div class="text-slate-400 italic text-[11px] font-sans">No active record-specific clearance</div>' : ''}
+                      </div>
 
                       <!-- Grant Record Access Form -->
-                      <form method="POST" action="/users/${u.id}/record-permissions" class="flex gap-2 mt-2 items-center flex-wrap">
+                      <form method="POST" action="/users/${u.id}/record-permissions" class="flex gap-2 mt-3 items-center flex-wrap">
                         <select name="domain_id" class="text-xs py-1.5 px-2.5 border border-slate-300 bg-white rounded text-slate-900">
                           ${domains.map((d: any) => `<option value="${d.id}">${d.zone_name}</option>`).join('')}
                         </select>
@@ -1486,7 +1524,7 @@ app.get('/users', async (c) => {
                           <option value="edit">Edit</option>
                           <option value="delete">Full Control</option>
                         </select>
-                        <button type="submit" class="bg-brand-secondary/10 text-brand-secondary border border-brand-secondary/20 px-2.5 py-1 rounded text-xs font-bold hover:bg-brand-secondary hover:text-white transition">Grant Record</button>
+                        <button type="submit" class="bg-brand-secondary/10 text-brand-secondary border border-brand-secondary/20 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-brand-secondary hover:text-white transition">Grant Record</button>
                       </form>
                     </div>
                   </div>
