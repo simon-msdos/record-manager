@@ -25,7 +25,34 @@ export class CloudflareClient {
   }
 
   async listZones() {
-    return this.request('/zones');
+    let allZones: any[] = [];
+    let page = 1;
+    let totalPages = 1;
+
+    do {
+      const response = await fetch(`${this.baseUrl}/zones?page=${page}&per_page=50`, {
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json() as any;
+        throw new Error(error.errors?.[0]?.message || 'Cloudflare API error');
+      }
+
+      const data = await response.json() as any;
+      allZones = allZones.concat(data.result);
+      
+      const info = data.result_info;
+      if (info) {
+        totalPages = Math.ceil(info.total_count / info.per_page);
+      }
+      page++;
+    } while (page <= totalPages);
+
+    return allZones;
   }
 
   async getZone(zoneId: string) {
