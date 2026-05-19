@@ -173,6 +173,9 @@ app.get('/setup', async (c) => {
   ])
   const cfTokenUrl = `https://dash.cloudflare.com/profile/api-tokens?name=Record-Manager&permissionGroupKeys=${encodeURIComponent(permissions)}&accountId=*&zoneId=all`
   
+  const url = new URL(c.req.url)
+  const redirectUri = `${url.protocol}//${url.host}/auth/google`
+
   return c.html(layout('Setup', `
     <h1>Configuration v1.1</h1>
     <p>Follow these steps to connect your Cloudflare account and enable Google Login.</p>
@@ -208,12 +211,17 @@ app.get('/setup', async (c) => {
             <p class="hint">The Google account email that will have full "Owner" access.</p>
             <input type="email" name="ADMIN_EMAIL" value="${settings.ADMIN_EMAIL || ''}" placeholder="admin@example.com" required>
           </div>
+          <div style="background: #fff3e0; padding: 1rem; border-radius: 8px; border: 1px solid #ffe0b2; margin-bottom: 1rem;">
+            <strong>Step A: Configure Redirect URI</strong>
+            <p style="font-size: 0.9rem; margin: 0.5rem 0;">Copy the URL below and add it to <strong>"Authorized redirect URIs"</strong> in your Google Console:</p>
+            <code style="display: block; background: #fff; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; word-break: break-all;">${redirectUri}</code>
+          </div>
           <div>
-            <label>Google Client ID</label>
+            <label>Step B: Google Client ID</label>
             <input type="text" name="GOOGLE_CLIENT_ID" value="${settings.GOOGLE_CLIENT_ID || ''}" placeholder="...apps.googleusercontent.com" required>
           </div>
           <div>
-            <label>Google Client Secret</label>
+            <label>Step C: Google Client Secret</label>
             <input type="password" name="GOOGLE_CLIENT_SECRET" value="${settings.GOOGLE_CLIENT_SECRET || ''}" required>
           </div>
         </div>
