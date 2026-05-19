@@ -204,6 +204,11 @@ app.get('/setup', async (c) => {
         
         <div style="display: grid; gap: 1rem;">
           <div>
+            <label>Administrator Email</label>
+            <p class="hint">The Google account email that will have full "Owner" access.</p>
+            <input type="email" name="ADMIN_EMAIL" value="${settings.ADMIN_EMAIL || ''}" placeholder="admin@example.com" required>
+          </div>
+          <div>
             <label>Google Client ID</label>
             <input type="text" name="GOOGLE_CLIENT_ID" value="${settings.GOOGLE_CLIENT_ID || ''}" placeholder="...apps.googleusercontent.com" required>
           </div>
@@ -227,13 +232,22 @@ app.post('/setup', async (c) => {
   const body = await c.req.parseBody()
   const db = c.env.record_manager_db
 
-  const keys = ['CF_API_TOKEN', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']
+  const keys = ['CF_API_TOKEN', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'ADMIN_EMAIL']
   for (const key of keys) {
     if (body[key]) {
       await db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
         .bind(key, body[key])
         .run()
     }
+  }
+
+  // If Admin email is provided, ensure they exist with owner role
+  if (body.ADMIN_EMAIL) {
+    await db.prepare(`
+      INSERT INTO users (email, role) 
+      VALUES (?, 'owner') 
+      ON CONFLICT(email) DO UPDATE SET role = 'owner'
+    `).bind(body.ADMIN_EMAIL).run()
   }
 
   return c.redirect('/')
@@ -244,13 +258,19 @@ app.get(
   async (c, next) => {
     const settings = await getSettings(c.env.record_manager_db)
     if (!settings.GOOGLE_CLIENT_ID || !settings.GOOGLE_CLIENT_SECRET) {
+      console.error('Missing Google OAuth credentials')
       return c.redirect('/setup')
     }
+    
+    // Explicitly set redirect_uri to the current URL without query params
+    const url = new URL(c.req.url)
+    const redirectUri = `${url.protocol}//${url.host}${url.pathname}`
     
     const handler = googleAuth({
       client_id: settings.GOOGLE_CLIENT_ID,
       client_secret: settings.GOOGLE_CLIENT_SECRET,
       scope: ['email', 'profile'],
+      redirect_uri: redirectUri
     })
     return handler(c, next)
   },
@@ -258,17 +278,30 @@ app.get(
     const user = c.get('user-google')
     if (user && user.email) {
       const db = c.env.record_manager_db
+      const settings = await getSettings(db)
       
-      // Check if this is the first user
-      const { count } = await db.prepare('SELECT count(*) as count FROM users').first<{ count: number }>() || { count: 0 }
+      // Check if this user is the designated admin
+      const isConfiguredAdmin = settings.ADMIN_EMAIL && user.email.toLowerCase() === settings.ADMIN_EMAIL.toLowerCase()
       
-      const role = count === 0 ? 'owner' : 'user'
+      // If not the admin, check if they are already in the database
+      const existingUser = await db.prepare('SELECT role FROM users WHERE email = ?').bind(user.email).first<any>()
       
-      // Upsert user
+      if (!isConfiguredAdmin && !existingUser) {
+        return c.html(layout('Access Denied', `
+          <h1>Access Denied</h1>
+          <p>Your email (<strong>${user.email}</strong>) is not authorized to access this system.</p>
+          <p>Please contact the administrator to be invited.</p>
+          <a href="/" class="btn">Back to Home</a>
+        `))
+      }
+
+      const role = isConfiguredAdmin ? 'owner' : existingUser.role
+      
+      // Upsert user to ensure they exist and have correct role if admin
       await db.prepare(`
         INSERT INTO users (email, role) 
         VALUES (?, ?) 
-        ON CONFLICT(email) DO UPDATE SET email=email
+        ON CONFLICT(email) DO UPDATE SET email=email, role=role
       `).bind(user.email, role).run()
 
       setCookie(c, 'user', user.email, {
@@ -279,6 +312,7 @@ app.get(
       })
       return c.redirect('/')
     }
+    console.error('Google Auth callback reached but no user data found')
     return c.text('Auth failed', 401)
   }
 )
