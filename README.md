@@ -1,65 +1,64 @@
 # 🛠 Record Manager
 
-A sleek, premium DNS administration portal for Cloudflare, built using Hono, Cloudflare Workers, and D1 SQL.
+A modern, high-security DNS administration portal for Cloudflare. Built for teams who need more control than the default dashboard offers, without the complexity of enterprise tools.
+
+It’s fast, secure, and runs entirely on the Cloudflare edge using **Hono**, **D1**, and **JSX**.
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/simon-msdos/record-manager)
 
 ---
 
-## 🚀 Quick Start (One-Click Deploy)
+## Why use this?
 
-1. Click the **Deploy to Cloudflare Workers** button above.
-2. Follow the prompts to connect your GitHub and deploy to Cloudflare.
-3. Apply database migrations to your live instance:
-   ```bash
-   npx wrangler d1 migrations apply record-manager-db --remote
-   ```
-4. Open your deployed Worker URL.
-5. Complete the **Initial Setup** by providing your:
-   * **Cloudflare API Token** (with DNS:Edit and Zone:Read permissions)
-   * **Google OAuth Credentials** (Client ID & Client Secret)
+Cloudflare's dashboard is great, but it’s often "all or nothing" when it comes to permissions. Record Manager lets you delegate DNS access with surgical precision. 
 
-> [!TIP]
-> **Automated Deployments:** To sync live deployments with your `git push` actions, go to your **Cloudflare Dashboard** > **Workers** > `record-manager` > **Settings** > **Git Integration** and link this GitHub repository.
+You can give an engineer access to **one single record** (like `dev.api.com`) without letting them touch the rest of your zone.
 
 ---
 
-## ✨ Features
+## ✨ What's inside?
 
-* **Zone Sync:** Fast, real-time import of multiple Cloudflare DNS zones.
-* **Modern minimalist UI:** A custom light-themed SaaS dashboard featuring geometric display typography.
-* **Granular Domain RBAC:** Delegate fine-grained domain-wide access clearances:
-  * `Read`: Read-only view of all zone records.
-  * `Add Only`: Authorized to create new records.
-  * `Edit Own`: Create records and manage (edit/delete) **only** the records they created.
-  * `Edit Any`: Modify any record within the zone, but restricted from deleting.
-  * `Delete Any`: Full record management capabilities.
-* **Record-Level Access Control (RLAC):** Delegate control of a **single record** (e.g., `api.example.com`) to an external engineer or third party. The user will be isolated and only see/manage that specific record.
-* **Click-to-Copy Identifiers:** One-click copying of record IDs directly from the domain dashboard for fast permissions assignment.
-* **Audit Logs:** Full ledger tracking every deployment, record creation, update, and deletion.
-* **Blacklist Protection:** Secure crucial namespaces (e.g. `*.internal.com`) to restrict write operations to system owners.
+*   **Modern Component UI**: Rewritten from scratch using **Hono JSX**. It’s clean, type-safe, and consistent.
+*   **Zero-Config Security**: On first run, the app automatically generates a cryptographically strong system secret for session signing. No manual setup needed.
+*   **Hardened by Default**: Comes pre-configured with **Secure Headers** (HSTS, CSP, XSS protection) and global **CSRF protection**.
+*   **Granular RBAC & RLAC**: 
+    *   **Zone-wide roles**: From `Read-Only` to `Full Admin`.
+    *   **Record-level isolation**: Grant access to a specific record ID so a user sees *nothing* else in that domain.
+*   **Real-time Feedback**: A built-in **Flash Message** system gives you instant confirmation for every DNS deployment or permission change.
+*   **Safety Net**: A **Blacklist** feature lets you "lock" sensitive namespaces (like `*.internal.com`) so only the system owner can modify them.
+*   **Audit Trails**: Every single click and deployment is logged. You’ll always know who changed what, and when.
+
+---
+
+## 🚀 Quick Start (Get it running in 2 mins)
+
+1.  **Deploy**: Click that big blue **Deploy to Cloudflare** button at the top.
+2.  **Database**: Once deployed, run the migrations to set up your D1 database:
+    ```bash
+    npx wrangler d1 migrations apply record-manager-db --remote
+    ```
+3.  **Setup**: Open your new Worker URL. The app will guide you through connecting your Cloudflare API Token and Google OAuth keys.
+4.  **Ownership**: The very first person to log in via Google after setup automatically becomes the **System Owner**.
 
 ---
 
 ## 🛠 Local Development
 
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Run database migrations on your local SQLite instance:
-   ```bash
-   npx wrangler d1 migrations apply record-manager-db --local
-   ```
-3. Start the development server:
-   ```bash
-   npm run dev
-   ```
+If you want to tinker with the code:
+
+1.  **Install**: `npm install`
+2.  **Migrate local DB**: `npx wrangler d1 migrations apply record-manager-db --local`
+3.  **Run**: `npm run dev`
 
 ---
 
-## 🔒 Security & Identity
+## 🔒 A Note on Security
 
-* **Google OAuth:** Access is strictly authenticated through Google OAuth.
-* **Auto-Provisioning:** The first user to log in after running the setup screen is automatically assigned the global **Owner** role.
-* **Admin Role:** Administrative users can view audit logs and manage non-owner users.
+We take security seriously because this tool manages your infrastructure.
+*   **Sessions**: All user sessions are cryptographically signed using a unique system secret.
+*   **Secrets**: We never store your Cloudflare tokens in the source code; they live safely in your private D1 instance.
+*   **Headers**: Every request is protected by industry-standard security headers.
+
+---
+
+*Made with ❤️ by developers, for developers.*
